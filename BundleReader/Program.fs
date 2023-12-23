@@ -1,8 +1,6 @@
 ﻿open System.IO
 
 open UnityDataTools.FileSystem
-open UnityDataTools.Analyzer
-open UnityDataTools.Analyzer.Util
 
 open UnityFS.TypeTree
 
@@ -22,8 +20,6 @@ let dumpObject (node : TypeTreeNode) =
 
     dumpObject node 0
 
-
-
 [<EntryPoint>]
 let main args =
 
@@ -39,9 +35,6 @@ let main args =
     let archive = UnityFileSystem.MountArchive(filePath, mountPoint);
 
     archive.Nodes.Count |> printfn "%i nodes"
-
-    let sfProvider = IdProvider<string>()
-    let oidProvider = ObjectIdProvider()
 
     let cb (objectId : int64) (fileId : int32) (pathId : int64) (propertyPath : string) (propertyType : string) =
         printfn $"oid: {objectId}, fid: {fileId}, pid: {pathId}, pp: {propertyPath}, pt: {propertyType}"
@@ -62,7 +55,7 @@ let main args =
             use sf = UnityFileSystem.OpenSerializedFile(nodePath)
             use reader = new UnityFileReader(nodePath, blockSize)
 
-            let sfId = sfProvider.GetId(fileName.ToLower())
+            //let sfId = sfProvider.GetId(fileName.ToLower())
 
             //use pptrReader = new PPtrAndCrcProcessor(unityFile, reader, path, PPtrAndCrcProcessor.CallbackDelegate(cb))
 
@@ -76,26 +69,28 @@ let main args =
             sf.Objects.Count |> printfn "  %i objects:"
 
             for o in sf.Objects do
-                System.Console.ReadKey() |> ignore
+                //System.Console.ReadKey() |> ignore
 
                 let root = sf.GetTypeTreeRoot(o.Id)
 
-                getTTObject reader (o.Offset) root
-                |> printfn "%A"
+                let tt = getTTObject reader (o.Offset) root
 
-                // let index = oidProvider.GetId((sfId, o.Id))
-                // printfn $"   object {index}:"
+                //tt |> printfn "%A"
 
-                // let root = sf.GetTypeTreeRoot(o.Id)
-                // //let crc = 0
+                let name =
+                    match tt.Value with
+                    | TypeTreeObject.Object os ->
+                        os
+                        |> Seq.tryFind (fun co -> co.Name = "m_Name")
+                        |> Option.bind (fun co ->
+                            match co.Value with TypeTreeObject.String s when not <| System.String.IsNullOrEmpty(s) -> Some s | _ -> None)
+                    | _ -> None
+
+                if tt.Node.Type = "Texture2D" then
+                    printfn "   Name: %A, Type: %A (%s)" name o.TypeId tt.Node.Type
+
+                    printfn "%A" tt
                 
-                // printfn $"    type: {root.Type} ({o.TypeId})"
-                // printfn $"    size: {o.Size}"
-
-                // printfn "    tree:"
-
-                // for line in dumpObject root do
-                //     printfn "     %s" line
         
     archive.Dispose()
 

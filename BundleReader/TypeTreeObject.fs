@@ -20,7 +20,8 @@ type TypeTreeObject =
 
 and SObject =
   { Name : string
-    TypeTree : TypeTreeObject
+    Value : TypeTreeObject
+    Node : TypeTreeNode
     EndOffset : int64
     NodeSize : int64 }
 
@@ -66,61 +67,65 @@ let rec getTTObject (reader : UnityFileReader) (offset : int64) (node : TypeTree
     match node with
     | BasicType basic ->
         {
+            Node = node
             Name = node.Name
             EndOffset = (offset + int64 node.SizeSafe) |> alignStream node
-            TypeTree = basic
+            Value = basic
             NodeSize = node.SizeSafe
         }
     | String s ->
         {
+            Node = node
             Name = node.Name
             EndOffset = (offset + 4L + int64 s.Length) |> alignStream node
-            TypeTree = s |> TypeTreeObject.String
+            Value = s |> TypeTreeObject.String
+            NodeSize = node.SizeSafe
+        }
+    | _ when node.IsArray ->
+        let size = node.Children[0] |> getTTObject reader offset
+        let offset = size.EndOffset
+        
+        let size = 
+            match size.Value with
+            | TypeTreeObject.Int32 size -> size
+            | _ -> failwith "Unexpected array size node type"
+
+        let dataNode = node.Children[1]
+
+        let mutable offset = offset
+        let elements =
+            if size > 0 then
+                seq {
+                    for i in 0..(size - 1) do
+                        let e = getTTObject reader offset dataNode
+                        offset <- e.EndOffset
+                        yield e
+                }
+                |> Seq.toList
+            else []
+
+        {
+            Node = node
+            Name = node.Name
+            EndOffset = offset |> alignStream node
+            Value = TypeTreeObject.Object elements
             NodeSize = node.SizeSafe
         }
     | _ ->
-        if node.IsArray then
-            let size = node.Children[0] |> getTTObject reader offset
-            let offset = size.EndOffset
-        
-            let size = 
-                match size.TypeTree with
-                | TypeTreeObject.Int32 size -> size
-                | _ -> failwith "Unexpected array size node type"
-
-            let dataNode = node.Children[1]
-
-            let mutable offset = offset
-            let elements =
-                if size > 0 then
-                    seq {
-                        for i in 0..(size - 1) do
-                            let e = getTTObject reader offset dataNode
-                            offset <- e.EndOffset
-                            yield e
-                    }
-                    |> Seq.toList
-                else []
-
-            {
-                Name = node.Name
-                EndOffset = offset |> alignStream node
-                TypeTree = TypeTreeObject.Object elements
-                NodeSize = node.SizeSafe
+        let mutable offset : int64 = offset
+        let children =
+            seq {
+                for c in node.Children do
+                    let cn = getTTObject reader offset c
+                    offset <- cn.EndOffset
+                    yield cn
             }
-        else
-            let mutable offset : int64 = offset
-            let children =
-                seq {
-                    for c in node.Children do
-                        let cn = getTTObject reader offset c
-                        offset <- cn.EndOffset
-                        yield cn
-                }
-                |> Seq.toList
-            {
-                Name = node.Name
-                EndOffset = offset |> alignStream node
-                TypeTree = TypeTreeObject.Object children
-                NodeSize = node.SizeSafe
-            }
+            |> Seq.toList
+
+        {
+            Node = node
+            Name = node.Name
+            EndOffset = offset |> alignStream node
+            Value = TypeTreeObject.Object children
+            NodeSize = node.SizeSafe
+        }
