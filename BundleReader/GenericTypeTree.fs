@@ -170,6 +170,7 @@ module TypeTreeObject =
             | String s -> s
             | Array arr -> arr
             | _ when node.IsManagedReferenceRegistry ->
+                // https://github.com/cstamford/RogueTraderUnityToolkit/blob/467185b4fbb11f34bc452055520a6ee2777f14b1/RogueTraderUnityToolkit.Unity/ObjectParser.cs#L141
                 if ancestors.Length > 0 && (not node.IsLeaf) then
                     { new ITypeTreeObject with
                         member _.Node = node
