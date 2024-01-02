@@ -40,6 +40,10 @@ type TypeTreeValue<'a> =
         override this.EndOffset = this.EndOffset
 
 [<RequireQualifiedAccess>]
+module TypeTreeValue =
+    type Object = TypeTreeValue<Map<string, ITypeTreeObject>>
+
+[<RequireQualifiedAccess>]
 module TypeTreeObject =
     type TypeTreeNode with
         member node.SizeSafe =
@@ -136,7 +140,7 @@ module TypeTreeObject =
 
         else ValueNone
 
-    and getObject (reader : UnityFileReader) (ancestors : TypeTreeNode list) (offset : int64) (node : TypeTreeNode) =
+    and getObject (reader : UnityFileReader) (ancestors : TypeTreeNode list) (offset : int64) (node : TypeTreeNode) : TypeTreeValue.Object =
         let value endOffset v =
           { Value = v
             Node = node
@@ -157,7 +161,7 @@ module TypeTreeObject =
         properties
         |> Seq.map (fun child -> child.Name, child)
         |> Map.ofSeq
-        |> value (if node.Children.Count = 0 then offset else (properties |> Seq.last).NextNodeOffset)
+        |> value (if node.Children.Count = 0 then offset else (properties |> Seq.last).EndOffset)
 
     and get (reader : UnityFileReader) (ancestors : TypeTreeNode list) (offset : int64) (node : TypeTreeNode) : ITypeTreeObject =
         try
@@ -166,7 +170,7 @@ module TypeTreeObject =
             | String s -> s
             | Array arr -> arr
             | _ when node.IsManagedReferenceRegistry ->
-                if ancestors.Length > 0 then
+                if ancestors.Length > 0 && (not node.IsLeaf) then
                     { new ITypeTreeObject with
                         member _.Node = node
                         member _.StartOffset = offset
@@ -176,4 +180,21 @@ module TypeTreeObject =
                     failwith "Managed reference registry parsing not implemented"
             | _ -> getObject reader ancestors offset node
         with ex ->
-            failwith $"{ex}"
+            // let mutable depth = 0
+            // let indent() =
+            //     seq {
+            //         for i in 0..depth do
+            //             sprintf "    "
+            //     }
+            //     |> String.concat ""
+
+            // let dumpNodes =
+            //     seq {
+            //         for node in node :: ancestors |> Seq.rev do
+            //             yield $"{indent()}Name: {node.Name}"
+            //             yield $"{indent()}  Type: {node.Type}"
+            //             yield $"{indent()}  Size: {node.Size}"
+            //     }
+            //     |> String.concat "\n"
+
+            failwith $"Exception in node {node.Type} \"{node.Name}\" at offset {offset}:\n{ex}"
