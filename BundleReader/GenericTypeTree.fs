@@ -3,6 +3,19 @@ module UnityData.GenericTypeTree
 open UnityDataTools.FileSystem
 open Newtonsoft.Json
 
+type TypeTreeNode with
+    member node.SizeSafe =
+        match node with
+        | _ when node.Size > 0 -> int64 node.Size
+        | _ -> 0L
+
+    member node.AllChildren =
+        seq {
+            for child in node.Children do
+                yield child
+                yield! child.AllChildren
+        }
+
 type ITypeTreeObject =
     abstract member Node : TypeTreeNode
     [<JsonIgnore>] abstract member Ancestors : TypeTreeNode list
@@ -17,9 +30,14 @@ module ITypeTreeObject =
         member this.Name = this.Node.Name
         member this.NextNodeOffset : int64 =
             let align (node : TypeTreeNode) (offset : int64) =
-                if node.MetaFlags.HasFlag(TypeTreeMetaFlags.AlignBytes)
-                    || node.MetaFlags.HasFlag(TypeTreeMetaFlags.AnyChildUsesAlignBytes) then
-                    (offset + 3L) &&& ~~~(3L)
+                if (node.MetaFlags.HasFlag(TypeTreeMetaFlags.AlignBytes)
+                    || node.MetaFlags.HasFlag(TypeTreeMetaFlags.AnyChildUsesAlignBytes))
+                    // && not (
+                    //     not <| node.MetaFlags.HasFlag(TypeTreeMetaFlags.AlignBytes)
+                    //     && node.AllChildren |> Seq.forall (fun c ->
+                    //         not <| c.MetaFlags.HasFlag(TypeTreeMetaFlags.AlignBytes)))
+                then
+                    (offset + 3L) &&& (~~~(3L))
                 else
                     offset
 
@@ -45,12 +63,6 @@ module TypeTreeValue =
 
 [<RequireQualifiedAccess>]
 module TypeTreeObject =
-    type TypeTreeNode with
-        member node.SizeSafe =
-            match node with
-            | _ when node.Size > 0 -> int64 node.Size
-            | _ -> 0L
-
     [<return: Struct>]
     let (|Integral|_|) (reader : UnityFileReader, ancestors : TypeTreeNode list, offset : int64, node : TypeTreeNode) =
         let value v =
@@ -112,30 +124,37 @@ module TypeTreeObject =
 
             let size = reader.ReadInt32(offset)
             let offset = offset + 4L
-            let size = if size < 0 then 0 else size
+            let length = if size < 0 then 0 else size
 
             let dataNode = node.Children[1]
 
             if dataNode.IsBasicType then
-                let array = System.Array.CreateInstance(dataNode.CSharpType, size)
+                let array = System.Array.CreateInstance(dataNode.CSharpType, length)
                 
-                if size > 0 then
-                    reader.ReadArray(offset, size, array)
+                if length > 0 then
+                    reader.ReadArray(offset, length, array)
 
-                value (offset + (dataNode.SizeSafe * int64 size)) array
+                value (offset + (dataNode.SizeSafe * int64 length)) array
             else
-                let elements =
-                    if size > 0 then
-                        (0, offset)
-                        |> Seq.unfold (fun (i, offset) ->
-                            if i < size then
-                                let e : ITypeTreeObject = get reader (node :: ancestors) offset dataNode
-                                Some (e, (i + 1, e.NextNodeOffset))
-                            else None)
-                        |> Seq.toArray
-                    else Array.empty
+                let elements = Array.zeroCreate<ITypeTreeObject> length
+
+                for i in 0..(length - 1) do
+                    let offset = if i > 0 then elements[i - 1].NextNodeOffset else offset
+
+                    elements[i] <- get reader (node :: ancestors) offset dataNode
+
+                // let elements =
+                //     if length > 0 then
+                //         (0, offset)
+                //         |> Seq.unfold (fun (i, offset) ->
+                //             if i < length then
+                //                 let e : ITypeTreeObject = get reader (node :: ancestors) offset dataNode
+                //                 Some (e, (i + 1, e.NextNodeOffset))
+                //             else None)
+                //         |> Seq.toArray
+                //     else Array.empty
                 
-                value (if size = 0 then offset else (elements |> Array.last).NextNodeOffset) elements
+                value (if length = 0 then offset else (elements |> Array.last).NextNodeOffset) elements
             |> ValueSome
 
         else ValueNone
@@ -147,40 +166,58 @@ module TypeTreeObject =
             Offset = offset
             EndOffset = endOffset
             Ancestors = ancestors }
-        
-        let properties =
-            (offset, node.Children |> Seq.toList)
-            |> Seq.unfold (fun (offset, children) ->
-                match children with
-                | [] -> None
-                | head :: tail ->
-                    let child = get reader (node :: ancestors) offset head
-                    Some (child, (child.NextNodeOffset, tail)))
-            |> Seq.cache
+
+        let properties = Array.zeroCreate<ITypeTreeObject> node.Children.Count
+
+        for i in 0..(node.Children.Count - 1) do
+            let offset = if i > 0 then properties[i - 1].NextNodeOffset else offset
+
+            properties[i] <- get reader (node :: ancestors) offset node.Children[i]
+
+        // let properties =
+        //     (offset, node.Children |> Seq.toList)
+        //     |> Seq.unfold (fun (offset, children) ->
+        //         match children with
+        //         | [] -> None
+        //         | head :: tail ->
+        //             let child = get reader (node :: ancestors) offset head
+        //             Some (child, (child.NextNodeOffset, tail)))
+        //     |> Seq.cache
 
         properties
         |> Seq.map (fun child -> child.Name, child)
         |> Map.ofSeq
-        |> value (if node.Children.Count = 0 then offset else (properties |> Seq.last).EndOffset)
+        |> value (if node.Children.Count = 0 then offset else (properties |> Seq.last).NextNodeOffset)
 
     and get (reader : UnityFileReader) (ancestors : TypeTreeNode list) (offset : int64) (node : TypeTreeNode) : ITypeTreeObject =
         try
-            match reader, ancestors, offset, node with
-            | Integral i -> i
-            | String s -> s
-            | Array arr -> arr
-            | _ when node.IsManagedReferenceRegistry ->
-                // https://github.com/cstamford/RogueTraderUnityToolkit/blob/467185b4fbb11f34bc452055520a6ee2777f14b1/RogueTraderUnityToolkit.Unity/ObjectParser.cs#L141
-                if ancestors.Length > 0 && (not node.IsLeaf) then
-                    { new ITypeTreeObject with
-                        member _.Node = node
-                        member _.StartOffset = offset
-                        member _.EndOffset = offset + node.SizeSafe
-                        member _.Ancestors = ancestors }
-                else
-                    failwith "Managed reference registry parsing not implemented"
-            | _ -> getObject reader ancestors offset node
+            let result =
+                match reader, ancestors, offset, node with
+                | Integral i -> i
+                | String s -> s
+                | Array arr -> arr
+                | _ when node.IsManagedReferenceRegistry ->
+                    // https://github.com/cstamford/RogueTraderUnityToolkit/blob/467185b4fbb11f34bc452055520a6ee2777f14b1/RogueTraderUnityToolkit.Unity/ObjectParser.cs#L141
+                    if ancestors.Length > 0 && (not node.IsLeaf) then
+                        { new ITypeTreeObject with
+                            member _.Node = node
+                            member _.StartOffset = offset
+                            member _.EndOffset = offset + node.SizeSafe
+                            member _.Ancestors = ancestors }
+                    else
+                        failwith "Managed reference registry parsing not implemented"
+                | _ -> getObject reader ancestors offset node
+
+            if result.StartOffset >= 3861061 then
+                result.Ancestors
+                |> Seq.rev
+                |> Seq.iter (fun a -> printf "%s." a.Name)
+
+                printfn "%s : %s, (%i, %i)" result.Name result.NodeType result.StartOffset result.EndOffset
+
+            result
         with ex ->
+            //System.Diagnostics.Debugger.Break()
             // let mutable depth = 0
             // let indent() =
             //     seq {

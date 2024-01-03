@@ -29,7 +29,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TestCommon", "TestCommon\Te
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{BBEB2626-EC4A-45CF-B35C-C84BBB4378D6}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "BundleReader", "BundleReader\BundleReader.fsproj", "{2E1CC17E-532C-457D-9043-7DB81BF235BF}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "BundleReader", "BundleReader\BundleReader.fsproj", "{2E1CC17E-532C-457D-9043-7DB81BF235BF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AssetTool", "AssetTool\AssetTool.csproj", "{6AE32E60-98AF-4A7D-B7A1-8F22E60152C7}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -77,6 +79,10 @@ Global
 		{2E1CC17E-532C-457D-9043-7DB81BF235BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2E1CC17E-532C-457D-9043-7DB81BF235BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2E1CC17E-532C-457D-9043-7DB81BF235BF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6AE32E60-98AF-4A7D-B7A1-8F22E60152C7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6AE32E60-98AF-4A7D-B7A1-8F22E60152C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6AE32E60-98AF-4A7D-B7A1-8F22E60152C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6AE32E60-98AF-4A7D-B7A1-8F22E60152C7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

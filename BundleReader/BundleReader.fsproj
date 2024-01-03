@@ -10,8 +10,6 @@
   <ItemGroup>
     <Compile Include="OwlcatBundles.fs" />
     <Compile Include="GenericTypeTree.fs" />
-    <Compile Include="TypeTree.fs" />
-    <Compile Include="TypeTreeDump.fs" />
     <!--<Compile Include="TypeTreeObject.fs" />-->
     <Compile Include="Program.fs" />
   </ItemGroup>
