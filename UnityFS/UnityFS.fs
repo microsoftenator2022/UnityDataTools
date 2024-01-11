@@ -37,18 +37,11 @@ type Message =
 | GetTypeTree of getTypeTreeArgs : struct (TypeTreeHandle * AsyncReplyChannel<TypeTree.TypeTreeNode>)
 
 let processor = MailboxProcessor.Start (fun inbox ->
-    let throw rc =
-        match rc with
-        | ReturnCode.Success -> ()
-        | _ ->
-            failwith $"Operation failed in IO process with return code: {rc}"
-    
     let inline getResultValue (result : NativeResult<_>) =
         match result with
         | Ok ok -> ok
         | Error rc ->
-            throw rc
-            Unchecked.defaultof<'a>
+            failwith $"Operation failed in IO process with return code: {rc}"
 
     let rec loop (state : ProcessorState) = async {
         let! msg = inbox.Receive()
@@ -65,7 +58,7 @@ let processor = MailboxProcessor.Start (fun inbox ->
                 |> function
                 | Ok ok -> ok
                 | Error ReturnCode.AlreadyInitialized -> ()
-                | Error returnCode -> throw returnCode
+                | Error returnCode -> failwith $"Operation failed in IO process with return code: {returnCode}"
 
                 state
 
@@ -76,7 +69,7 @@ let processor = MailboxProcessor.Start (fun inbox ->
                 |> function
                 | Ok ok -> ok
                 | Error ReturnCode.NotInitialized -> ()
-                | Error returnCode -> throw returnCode
+                | Error returnCode -> failwith $"Operation failed in IO process with return code: {returnCode}"
 
                 state
 
