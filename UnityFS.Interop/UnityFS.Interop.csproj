@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--<None Include="..\UnityFileSystem\UnityFileApi.dll" Link="UnityFileApi.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>-->
+    <None Include="..\UnityFileSystem\UnityFileSystemApi.dll" Link="UnityFileSystemApi.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="..\UnityFileSystem\UnityFileSystemApi.so" Link="UnityFileSystemApi.so">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="..\UnityFileSystem\UnityFileSystemApi.dylib" Link="UnityFileSystemApi.dylib">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
