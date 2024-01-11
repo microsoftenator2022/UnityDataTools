@@ -14,15 +14,15 @@ let handleError (returnCode : ReturnCode, result) : NativeResult<_> =
 type CSharpTypeTreeHandle = TypeTreeHandle
 
 [<CustomEquality; CustomComparison>]
-type TypeTreeHandle = { Handle : CSharpTypeTreeHandle; SerializedFile : SerializedFileHandle; ObjectId : int64 }
+type TypeTreeHandle = { Handle : CSharpTypeTreeHandle; SerializedFile : SerializedFileHandle; }
 with
-    member this.Comparable = this.Handle.Handle, this.SerializedFile.Handle, this.ObjectId
+    member this.Comparable = this.Handle.Handle, this.SerializedFile.Handle
     override this.Equals(other) =
         match other with
         | :? TypeTreeHandle as other ->
             this.Comparable.Equals(other.Comparable)
         | _ -> false
-    override this.GetHashCode() = hash (this.Handle.Handle, this.SerializedFile.Handle, this.ObjectId)
+    override this.GetHashCode() = hash (this.Comparable)
     interface IStructuralComparable with
         member this.CompareTo(other, comparer) =
             match other with

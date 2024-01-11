@@ -25,9 +25,8 @@ let getObjects (handle : SerializedFileHandle) =
 let getTypeTreeHandle objectId serializedFile =
     DllWrapper.GetTypeTree(serializedFile, objectId)
     |> handleError
-    |> Result.map (fun h -> { Handle = h; SerializedFile = serializedFile; ObjectId = objectId })
+    |> Result.map (fun h -> { Handle = h; SerializedFile = serializedFile })
 
-//let getTypeTree handle
     //let openFile path =
     //    DllWrapper.OpenFile(path)
     //    |> handleError

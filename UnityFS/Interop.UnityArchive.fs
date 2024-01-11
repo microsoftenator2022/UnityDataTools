@@ -3,6 +3,7 @@
 open UnityFS.Interop
 open UnityFS.Interop.FSharp.Wrappers
 
+[<Struct>]
 type Node =
   { Size : int64
     Flags : ArchiveNodeFlags 
