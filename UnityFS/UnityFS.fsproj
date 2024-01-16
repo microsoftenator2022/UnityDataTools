@@ -17,9 +17,8 @@
     <Compile Include="TypeTreeNode.fs" />
     <Compile Include="UnityFS.fs" />
     <Compile Include="Reader.fs" />
+    <Compile Include="GenericTypeTree.fs" />
   </ItemGroup>
-
-  <ItemGroup />
 
   <ItemGroup>
     <ProjectReference Include="..\UnityFS.Interop\UnityFS.Interop.csproj" />

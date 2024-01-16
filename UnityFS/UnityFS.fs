@@ -210,3 +210,6 @@ let getTypeTreeAsync serializedFile objectId = async {
 let getTypeTree serializedFile objectId =
     let handle = processor.PostAndReply (fun rc -> GetTypeTreeHandle (serializedFile, objectId, rc))
     processor.PostAndReply (fun rc -> GetTypeTree (handle, rc))
+
+let openFile path = processor.PostAndReply (fun rc -> OpenFile (path, rc))
+    

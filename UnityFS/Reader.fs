@@ -1,4 +1,4 @@
-﻿module UnityFS.Reader.Reader
+﻿module UnityFS.Reader
 
 open System.IO
 open UnityFS.Interop
@@ -117,3 +117,9 @@ type UnityFileReader(file, ?bufferSize : int32) =
     member _.ReadUInt16 = readBytes 2 >> BitConverter.ToUInt16
     member _.ReadInt8 = readBytes 1 >> fun b -> b[0] |> sbyte
     member _.ReadUInt8 = readBytes 1 >> fun b -> b[0]
+
+    member _.ReadString offset length = readBytes length offset |> System.Text.Encoding.UTF8.GetString
+    member _.ReadArray (offset : int64) (length : int32)  (destination : System.Array) =
+        let bytes = readBytes length offset
+        
+        System.Array.Copy(bytes, destination, length)
