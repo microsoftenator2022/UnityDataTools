@@ -33,10 +33,6 @@ module ITypeTreeObject =
             let align (node : TypeTreeNode) (offset : int64) =
                 if (node.MetaFlags.HasFlag(TypeTreeMetaFlags.AlignBytes)
                     || node.MetaFlags.HasFlag(TypeTreeMetaFlags.AnyChildUsesAlignBytes))
-                    // && not (
-                    //     not <| node.MetaFlags.HasFlag(TypeTreeMetaFlags.AlignBytes)
-                    //     && node.AllChildren |> Seq.forall (fun c ->
-                    //         not <| c.MetaFlags.HasFlag(TypeTreeMetaFlags.AlignBytes)))
                 then
                     (offset + 3L) &&& (~~~(3L))
                 else
@@ -137,23 +133,23 @@ module TypeTreeObject =
 
                 value (offset + (dataNode.SizeSafe * int64 length)) array
             else
-                let elements = Array.zeroCreate<ITypeTreeObject> length
+                //let elements = Array.zeroCreate<ITypeTreeObject> length
 
-                for i in 0..(length - 1) do
-                    let offset = if i > 0 then elements[i - 1].NextNodeOffset else offset
+                //for i in 0..(length - 1) do
+                //    let offset = if i > 0 then elements[i - 1].NextNodeOffset else offset
 
-                    elements[i] <- get reader (node :: ancestors) offset dataNode
+                //    elements[i] <- get reader (node :: ancestors) offset dataNode
 
-                // let elements =
-                //     if length > 0 then
-                //         (0, offset)
-                //         |> Seq.unfold (fun (i, offset) ->
-                //             if i < length then
-                //                 let e : ITypeTreeObject = get reader (node :: ancestors) offset dataNode
-                //                 Some (e, (i + 1, e.NextNodeOffset))
-                //             else None)
-                //         |> Seq.toArray
-                //     else Array.empty
+                let elements =
+                    if length > 0 then
+                        (0, offset)
+                        |> Seq.unfold (fun (i, offset) ->
+                            if i < length then
+                                let e : ITypeTreeObject = get reader (node :: ancestors) offset dataNode
+                                Some (e, (i + 1, e.NextNodeOffset))
+                            else None)
+                        |> Seq.toArray
+                    else Array.empty
                 
                 value (if length = 0 then offset else (elements |> Array.last).NextNodeOffset) elements
             |> ValueSome
@@ -168,22 +164,22 @@ module TypeTreeObject =
             EndOffset = endOffset
             Ancestors = ancestors }
 
-        let properties = Array.zeroCreate<ITypeTreeObject> node.Children.Length
+        //let properties = Array.zeroCreate<ITypeTreeObject> node.Children.Length
 
-        for i in 0..(node.Children.Length - 1) do
-            let offset = if i > 0 then properties[i - 1].NextNodeOffset else offset
+        //for i in 0..(node.Children.Length - 1) do
+        //    let offset = if i > 0 then properties[i - 1].NextNodeOffset else offset
 
-            properties[i] <- get reader (node :: ancestors) offset node.Children[i]
+        //    properties[i] <- get reader (node :: ancestors) offset node.Children[i]
 
-        // let properties =
-        //     (offset, node.Children |> Seq.toList)
-        //     |> Seq.unfold (fun (offset, children) ->
-        //         match children with
-        //         | [] -> None
-        //         | head :: tail ->
-        //             let child = get reader (node :: ancestors) offset head
-        //             Some (child, (child.NextNodeOffset, tail)))
-        //     |> Seq.cache
+        let properties =
+            (offset, node.Children |> Seq.toList)
+            |> Seq.unfold (fun (offset, children) ->
+                match children with
+                | [] -> None
+                | head :: tail ->
+                    let child = get reader (node :: ancestors) offset head
+                    Some (child, (child.NextNodeOffset, tail)))
+            |> Seq.cache
 
         properties
         |> Seq.map (fun child -> child.Name, child)
@@ -218,22 +214,5 @@ module TypeTreeObject =
 
             result
         with ex ->
-            //System.Diagnostics.Debugger.Break()
-            // let mutable depth = 0
-            // let indent() =
-            //     seq {
-            //         for i in 0..depth do
-            //             sprintf "    "
-            //     }
-            //     |> String.concat ""
-
-            // let dumpNodes =
-            //     seq {
-            //         for node in node :: ancestors |> Seq.rev do
-            //             yield $"{indent()}Name: {node.Name}"
-            //             yield $"{indent()}  Type: {node.Type}"
-            //             yield $"{indent()}  Size: {node.Size}"
-            //     }
-            //     |> String.concat "\n"
 
             failwith $"Exception in node {node.Type} \"{node.Name}\" at offset {offset}:\n{ex}"
