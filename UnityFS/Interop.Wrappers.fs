@@ -30,4 +30,5 @@ with
                 if this = other then 0
                 else comparer.Compare(this.Comparable, other.Comparable)
             | _ -> raise (System.ArgumentException())
-                
+
+type UnityFile = { Handle : UnityFileHandle; Size : int64 }

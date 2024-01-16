@@ -8,12 +8,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="Script.fsx" />
     <Compile Include="Interop.Wrappers.fs" />
     <Compile Include="Interop.UnityArchive.fs" />
     <Compile Include="Interop.SerializedFile.fs" />
     <Compile Include="Interop.UnityFileSystem.fs" />
+    <Compile Include="Interop.UnityFile.fs" />
     <Compile Include="TypeTreeNode.fs" />
     <Compile Include="UnityFS.fs" />
+    <Compile Include="Reader.fs" />
   </ItemGroup>
 
   <ItemGroup />

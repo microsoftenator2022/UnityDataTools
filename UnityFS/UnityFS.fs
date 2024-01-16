@@ -9,14 +9,14 @@ open UnityFS.Interop.FSharp.TypeTree
 type ProcessorState =
   { Archives : Map<string, UnityArchiveHandle>
     SerializedFiles : Map<string, SerializedFileHandle>
-    Files : Map<string, UnityFileHandle>
+    Files : Map<string, UnityFile>
     TypeTrees : Map<TypeTreeHandle, TypeTree.TypeTreeNode> }
 with
     static member Empty = { Archives = Map.empty; Files = Map.empty; SerializedFiles = Map.empty; TypeTrees = Map.empty }
     
     member this.Dispose() =
         for f in this.Files |> Map.values do
-            f.Dispose()
+            f.Handle.Dispose()
 
         for sf in this.SerializedFiles |> Map.values do
             sf.Dispose()
@@ -24,19 +24,22 @@ with
         for a in this.Archives |> Map.values do
             a.Dispose()
 
-[<Struct>]
 type Message =
 | Init
 | Cleanup
-| GetState of getStateArgs : AsyncReplyChannel<ProcessorState>
-| MountArchive of mountArchiveArgs : struct {| MountPoint : string; Path : string; ReplyWith: AsyncReplyChannel<UnityArchiveHandle> |}
-| GetNodes of getNodesArgs : struct (UnityArchiveHandle * AsyncReplyChannel<System.Collections.Generic.IReadOnlyList<UnityArchive.Node>>)
-| OpenSerializedFile of openSerializedFileArgs : struct (string * AsyncReplyChannel<SerializedFileHandle>)
-| GetObjectsInfo of getObjectsInfoArgs : struct (SerializedFileHandle * AsyncReplyChannel<ObjectInfo[]>)
-| GetTypeTreeHandle of getTypeTreeHandleArgs : struct (SerializedFileHandle * int64 * AsyncReplyChannel<TypeTreeHandle>)
-| GetTypeTree of getTypeTreeArgs : struct (TypeTreeHandle * AsyncReplyChannel<TypeTree.TypeTreeNode>)
+| GetState of AsyncReplyChannel<ProcessorState>
+| MountArchive of struct (struct {| MountPoint : string; Path : string; |} * AsyncReplyChannel<UnityArchiveHandle>)
+| GetNodes of struct (UnityArchiveHandle * AsyncReplyChannel<System.Collections.Generic.IReadOnlyList<UnityArchive.Node>>)
+| OpenSerializedFile of struct (string * AsyncReplyChannel<SerializedFileHandle>)
+| GetObjectsInfo of struct (SerializedFileHandle * AsyncReplyChannel<ObjectInfo[]>)
+| GetTypeTreeHandle of struct (SerializedFileHandle * int64 * AsyncReplyChannel<TypeTreeHandle>)
+| GetTypeTree of struct (TypeTreeHandle * AsyncReplyChannel<TypeTree.TypeTreeNode>)
+| OpenFile of struct (string * AsyncReplyChannel<UnityFile>)
+//| ReadFromFile of struct (struct {| File : UnityFile; Offset : int64; Count : int32; Buffer : byte[] |} * AsyncReplyChannel<struct (byte[] * int32)>)
 
 let processor = MailboxProcessor.Start (fun inbox ->
+    inbox.Error.Add(fun ex -> ex.ToString() |> eprintfn "%s")
+
     let inline getResultValue (result : NativeResult<_>) =
         match result with
         | Ok ok -> ok
@@ -73,19 +76,19 @@ let processor = MailboxProcessor.Start (fun inbox ->
 
                 state
 
-            | MountArchive args ->
+            | MountArchive (args, rc) ->
                 let handle, state =
                     state.Archives
                     |> Map.tryFind args.MountPoint
-                    |> Option.map (fun handle -> handle, state)
-                    |> Option.defaultWith (fun () ->
+                    |> function
+                    | Some handle -> handle, state
+                    | _ ->
                         let handle =
                             UnityArchive.mountArchive args.MountPoint args.Path
                             |> getResultValue
                         handle, { state with Archives = state.Archives |> Map.add args.MountPoint handle }
-                    )
 
-                args.ReplyWith.Reply handle
+                rc.Reply handle
 
                 state
 
@@ -102,14 +105,14 @@ let processor = MailboxProcessor.Start (fun inbox ->
                 let handle, state =
                     state.SerializedFiles
                     |> Map.tryFind path
-                    |> Option.map (fun sf -> sf, state)
-                    |> Option.defaultWith (fun () ->
+                    |> function
+                    | Some sf -> sf, state
+                    | _ ->
                         let handle =
                             SerializedFile.openFile path
                             |> getResultValue
 
                         handle, { state with SerializedFiles = state.SerializedFiles |> Map.add path handle }
-                    )
 
                 rc.Reply handle
 
@@ -137,16 +140,47 @@ let processor = MailboxProcessor.Start (fun inbox ->
                 let tt, state =
                     state.TypeTrees
                     |> Map.tryFind handle
-                    |> Option.map (fun handle -> handle, state)
-                    |> Option.defaultWith (fun () ->
-                        let tt = (TypeTreeNode.getTypeTree handle |> getResultValue)
+                    |> function
+                    | Some handle -> handle, state
+                    | _ ->
+                        let tt = TypeTreeNode.getTypeTree handle |> getResultValue
 
                         tt, { state with TypeTrees = state.TypeTrees |> Map.add handle tt }
-                    )
 
                 rc.Reply tt
 
                 state
+
+            | OpenFile (path, rc) ->
+                let f, state =
+                    state.Files
+                    |> Map.tryFind path
+                    |> function
+                    | Some file -> file, state
+                    | _ ->
+                        let h, size =
+                            UnityFile.openFile path
+                            |> Result.bind (fun h ->
+                                UnityFile.getSize h
+                                |> Result.map (fun s -> h, s))
+                            |> getResultValue
+
+                        let file = { Handle = h; Size = size }
+
+                        file, { state with Files = state.Files |> Map.add path file }
+
+                rc.Reply f
+
+                state
+
+            //| ReadFromFile (args, rc) ->
+            //    let bytes, count =
+            //        UnityFile.readAt args.Offset args.Count args.Buffer args.File.Handle
+            //        |> getResultValue
+
+            //    rc.Reply (bytes, count)
+
+            //    state
 
         return! loop state
     }
@@ -158,7 +192,7 @@ let init() = processor.Post Init
 let cleanup() = processor.Post Cleanup
 
 let mountArchive path mountPoint = processor.PostAndReply (fun rc ->
-    MountArchive {| MountPoint = mountPoint; Path = path; ReplyWith = rc |})
+    MountArchive ({| MountPoint = mountPoint; Path = path; |}, rc))
 
 let getArchiveNodes archive = processor.PostAndReply (fun rc -> GetNodes (archive, rc))
 
