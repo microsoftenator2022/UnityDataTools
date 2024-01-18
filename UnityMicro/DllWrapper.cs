@@ -2,8 +2,9 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace UnityFS.Interop;
-public class UnityArchiveHandle : SafeHandle
+namespace UnityDataTools.FileSystem;
+
+internal class UnityArchiveHandle : SafeHandle
 {
     public UnityArchiveHandle() : base(IntPtr.Zero, true)
     {
@@ -17,7 +18,7 @@ public class UnityArchiveHandle : SafeHandle
     }
 }
 
-public class UnityFileHandle : SafeHandle
+internal class UnityFileHandle : SafeHandle
 {
     public UnityFileHandle() : base(IntPtr.Zero, true)
     {
@@ -29,9 +30,9 @@ public class UnityFileHandle : SafeHandle
     {
         return DllWrapper.CloseFile(handle) == ReturnCode.Success;
     }
-    }
+}
 
-public class SerializedFileHandle : SafeHandle
+internal class SerializedFileHandle : SafeHandle
 {
     public SerializedFileHandle() : base(IntPtr.Zero, true)
     {
@@ -43,8 +44,6 @@ public class SerializedFileHandle : SafeHandle
     {
         return DllWrapper.CloseSerializedFile(handle) == ReturnCode.Success;
     }
-
-    public IntPtr Handle => handle;
 }
 
 public class TypeTreeHandle : SafeHandle
@@ -60,10 +59,10 @@ public class TypeTreeHandle : SafeHandle
         return true;
     }
 
-    public IntPtr Handle => handle;
+    internal IntPtr Handle => handle;
 }
 
-public enum ReturnCode
+internal enum ReturnCode
 {
     Success,
     AlreadyInitialized,
@@ -84,10 +83,10 @@ public enum ReturnCode
 [Flags]
 public enum ArchiveNodeFlags
 {
-None = 0,
-    Directory = 1 << 0,
-    Deleted = 1 << 1,
-    SerializedFile = 1 << 2,
+    None            = 0,
+    Directory       = 1 << 0,
+    Deleted         = 1 << 1,
+    SerializedFile  = 1 << 2,
 }
 
 public enum CompressionType
@@ -121,26 +120,25 @@ public struct ObjectInfo
     public readonly long Size;
     public readonly int TypeId;
 }
-
 [Flags]
 public enum TypeTreeFlags
 {
-    None = 0,
-    IsArray = 1 << 0,
-    IsManagedReference = 1 << 1,
-    IsManagedReferenceRegistry = 1 << 2,
-    IsArrayOfRefs = 1 << 3,
+    None                        = 0,
+    IsArray                     = 1 << 0,
+    IsManagedReference          = 1 << 1,
+    IsManagedReferenceRegistry  = 1 << 2,
+    IsArrayOfRefs               = 1 << 3,
 }
 
 [Flags]
 public enum TypeTreeMetaFlags
 {
-    None = 0,
-    AlignBytes = 1 << 14,
-    AnyChildUsesAlignBytes = 1 << 15,
+    None                    = 0,
+    AlignBytes              = 1 << 14,
+    AnyChildUsesAlignBytes  = 1 << 15,
 }
 
-public static class DllWrapper
+internal static class DllWrapper
 {
     [DllImport("UnityFileSystemApi",
         CallingConvention = CallingConvention.Cdecl,
@@ -253,4 +251,3 @@ public static class DllWrapper
         [MarshalAs(UnmanagedType.U4)] out TypeTreeMetaFlags metaFlags, out int firstChildNode,
         out int nextNode);
 }
-
