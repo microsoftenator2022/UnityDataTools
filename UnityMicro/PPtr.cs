@@ -8,7 +8,7 @@ using UnityDataTools.FileSystem;
 
 using UnityMicro.TypeTree;
 
-readonly partial record struct PPtr(string TypeName, int FileID, long PathID)
+public readonly partial record struct PPtr(string TypeName, int FileID, long PathID)
 {
     [GeneratedRegex(@"^PPtr<(\w+)>$")]
     internal static partial Regex PPtrPattern();

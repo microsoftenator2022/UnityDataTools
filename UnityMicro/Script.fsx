@@ -14,6 +14,7 @@ open UnityDataTools
 open UnityDataTools.FileSystem
 
 open UnityMicro.TypeTree
+open UnityMicro.Parsers
 
 type TypeTreeObject = TypeTreeValue<System.Collections.Generic.Dictionary<string, ITypeTreeObject>>
 
@@ -25,6 +26,21 @@ let rec dumpTypeTree (ttn : TypeTreeNode) = seq {
             dumpTypeTree n
             |> Seq.map (sprintf "  %s")
 }
+
+let rec getPPtrs (tto : ITypeTreeObject) = seq {
+    match tto with
+    | :? TypeTreeValue<PPtr> as v -> yield v.Value
+    | :? TypeTreeValue<ITypeTreeObject[]> as arr ->
+        yield! arr.Value |> Seq.collect getPPtrs
+    | :? TypeTreeObject as o ->
+        yield! o.Value.Values |> Seq.collect getPPtrs
+    | _ -> ()
+}
+
+let toValueOption<'a> (microOption : MicroUtils.Option<'a>) : 'a voption =
+    if microOption.IsSome then
+        ValueSome microOption.Value
+    else ValueNone
 
 UnityFileSystem.Init()
 
@@ -59,7 +75,7 @@ for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlag
 
     sw.Stop()
 
-    printfn "Read type trees in %ims" sw.ElapsedMilliseconds
+    printfn "Dumped type trees in %ims" sw.ElapsedMilliseconds
 
     let mutable i = 0
 
@@ -85,8 +101,51 @@ for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlag
         
         i <- i + 1
 
-    printfn "Read %i objects" i
+    printfn "Dumped %i objects" i
 
+    let pptrs =
+        sf.Objects
+        |> Seq.map (fun o -> TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id))
+        |> Seq.collect getPPtrs
+        |> Seq.distinct
+        |> Seq.cache
+
+    pptrs
+    |> Seq.length
+    |> printfn "Found %i unique PPtrs"
+
+    let pptrs =
+        pptrs
+        |> Seq.where (fun pptr -> pptr.FileID = 0 && pptr.PathID <> 0)
+        |> Seq.map (fun pptr -> 
+            let o = sf.GetObjectByID(pptr.PathID)
+            let tto =
+                TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id).TryGetObject()
+                |> toValueOption
+
+            let ttoName =
+                tto
+                |> ValueOption.bind (fun tto -> tto.TryGetField("m_Name") |> toValueOption)
+                |> ValueOption.map(fun f -> f.Invoke().ToString())
+
+            pptr, tto, ttoName)
+        |> Seq.cache
+    
+    seq {
+
+        for (pptr, tto, ttoName) in pptrs do
+            match tto with
+            | ValueSome tto ->
+                let name = match ttoName with ValueSome name -> name | _ -> "<anonymous>"
+
+                yield sprintf "%A -> %s : %s (%s)" pptr name tto.Node.Type (tto.Node.CSharpType.ToString())
+            | _ -> ()
+    }
+    |> fun lines -> File.WriteAllLines("pptrs.txt", lines)
+
+    pptrs
+    |> Seq.length
+    |> printfn "Dumped %i pptrs"
 
 printfn "Done"
 
