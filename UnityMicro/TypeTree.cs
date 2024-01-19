@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Text;
 
 using MicroUtils;
+using MicroUtils.Functional;
 
 using UnityDataTools.FileSystem;
 
@@ -278,7 +279,8 @@ public static class TypeTreeObject
         UnityFileReader reader,
         MicroStack<TypeTreeNode> ancestors,
         long offset,
-        TypeTreeNode node)
+        TypeTreeNode node,
+        SerializedFile? sf = null)
     {
         try
         {
@@ -316,6 +318,12 @@ public static class TypeTreeObject
                 $"Exception in node {node.Type} \"{node.Name}\" at offset {offset}:\n  {ex.Message}", ex);
         }
     }
+
+    public static ITypeTreeObject Get(
+        SerializedFile sf,
+        UnityFileReader reader,
+        ObjectInfo objectInfo) =>
+        Get(reader, MicroStack<TypeTreeNode>.Empty, objectInfo.Offset, sf.GetTypeTreeRoot(objectInfo.Id), sf);
 
     public static Option<Func<T>> TryGetValue<T>(this ITypeTreeObject tto)
     {

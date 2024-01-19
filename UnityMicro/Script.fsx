@@ -37,7 +37,7 @@ let rec getPPtrs (tto : ITypeTreeObject) = seq {
     | _ -> ()
 }
 
-let toValueOption<'a> (microOption : MicroUtils.Option<'a>) : 'a voption =
+let toValueOption<'a> (microOption : Functional.Option<'a>) : 'a voption =
     if microOption.IsSome then
         ValueSome microOption.Value
     else ValueNone
@@ -77,6 +77,8 @@ for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlag
 
     printfn "Dumped type trees in %ims" sw.ElapsedMilliseconds
 
+    sw.Restart()
+
     let mutable i = 0
 
     for o in sf.Objects do
@@ -101,7 +103,11 @@ for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlag
         
         i <- i + 1
 
-    printfn "Dumped %i objects" i
+    sw.Stop()
+
+    printfn "Dumped %i objects in %ims" i sw.ElapsedMilliseconds
+
+    sw.Restart()
 
     let pptrs =
         sf.Objects
@@ -118,10 +124,15 @@ for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlag
         pptrs
         |> Seq.where (fun pptr -> pptr.FileID = 0 && pptr.PathID <> 0)
         |> Seq.map (fun pptr -> 
-            let o = sf.GetObjectByID(pptr.PathID)
             let tto =
-                TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id).TryGetObject()
+                pptr.TryGet(sf, reader)
                 |> toValueOption
+                |> ValueOption.bind (fun tto -> tto.TryGetObject() |> toValueOption)
+
+            //let o = sf.GetObjectByID(pptr.PathID)
+            //let tto =
+            //    TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id).TryGetObject()
+            //    |> toValueOption
 
             let ttoName =
                 tto
@@ -143,9 +154,12 @@ for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlag
     }
     |> fun lines -> File.WriteAllLines("pptrs.txt", lines)
 
-    pptrs
-    |> Seq.length
-    |> printfn "Dumped %i pptrs"
+    sw.Stop()
+
+    (pptrs
+    |> Seq.length,
+    sw.ElapsedMilliseconds)
+    ||> printfn "Dumped %i pptrs in %ims" 
 
 printfn "Done"
 
