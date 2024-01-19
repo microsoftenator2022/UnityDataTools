@@ -325,6 +325,23 @@ public static class TypeTreeObject
         ObjectInfo objectInfo) =>
         Get(reader, MicroStack<TypeTreeNode>.Empty, objectInfo.Offset, sf.GetTypeTreeRoot(objectInfo.Id), sf);
 
+    public static IEnumerable<ITypeTreeObject> Find(this ITypeTreeObject obj, Func<ITypeTreeObject, bool> predicate)
+    {
+        if (predicate(obj))
+            yield return obj;
+
+        if (obj is TypeTreeValue<Dictionary<string, ITypeTreeObject>> tto)
+        {
+            foreach (var c in tto.Value.Values.SelectMany(c => c.Find(predicate)))
+                yield return c;
+        }
+        else if (obj is TypeTreeValue<ITypeTreeObject[]> arr)
+        {
+            foreach (var c in arr.Value.SelectMany(c => c.Find(predicate)))
+                yield return c;
+        }
+    }
+
     public static Option<Func<T>> TryGetValue<T>(this ITypeTreeObject tto)
     {
         if (tto is TypeTreeValue<T> obj)
