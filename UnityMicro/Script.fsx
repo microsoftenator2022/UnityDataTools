@@ -1,22 +1,59 @@
-open System.IO
-
-
 #r @"bin\Debug\net8.0\MicroUtils.dll"
 #r @"bin\Debug\net8.0\UnityMicro.dll"
 
-let mountPoint = @"archive:\"
-
-let bundlePath = @"D:\SteamLibrary\steamapps\common\Warhammer 40,000 Rogue Trader\Bundles\ui"
+open System.IO
 
 open MicroUtils
 
 open UnityDataTools
 open UnityDataTools.FileSystem
 
-open UnityMicro.TypeTree
 open UnityMicro.Parsers
+open UnityMicro.TypeTree
+
+let mountPoint = @"archive:\"
+
+let bundlePath = @"D:\SteamLibrary\steamapps\common\Warhammer 40,000 Rogue Trader\Bundles\ui"
 
 type TypeTreeObject = TypeTreeValue<System.Collections.Generic.Dictionary<string, ITypeTreeObject>>
+
+let toValueOption<'a> (microOption : Functional.Option<'a>) : 'a voption =
+    if microOption.IsSome then
+        ValueSome microOption.Value
+    else ValueNone
+
+//let formatAsFileSize (size : int64) : string =
+//    if size > 10L * pown 2L 40 then
+//        size / (pown 2L 30)
+//        |> sprintf "%i TiB"
+//    elif size > 10L * pown 2L 30 then
+//        size / (pown 2L 30)
+//        |> sprintf "%i GiB"
+//    elif size > 10L * pown 2L 20 then
+//        size / (pown 2L 20)
+//        |> sprintf "%i MiB"
+//    elif size > 10L * pown 2L 10 then
+//        size / (pown 2L 10)
+//        |> sprintf "%i KiB"
+//    else
+//        size |> sprintf "%i B"
+
+//UnityFileSystem.Init()
+
+//let archive = UnityFileSystem.MountArchive(bundlePath, mountPoint)
+
+//for n in archive.Nodes do
+//    printfn "%s" n.Path
+//    n.Size |> formatAsFileSize |> printfn "  Size: %s"
+//    printfn "  Flags %A" n.Flags
+
+//    if n.Flags.HasFlag(ArchiveNodeFlags.SerializedFile) then
+//        use sf = UnityFileSystem.OpenSerializedFile n.Path
+        
+
+//        ()
+
+//UnityFileSystem.Cleanup()
 
 let rec dumpTypeTree (ttn : TypeTreeNode) = seq {
     yield sprintf "%s : %s" ttn.Name ttn.Type
@@ -36,11 +73,6 @@ let rec getPPtrs (tto : ITypeTreeObject) = seq {
         yield! o.Value.Values |> Seq.collect getPPtrs
     | _ -> ()
 }
-
-let toValueOption<'a> (microOption : Functional.Option<'a>) : 'a voption =
-    if microOption.IsSome then
-        ValueSome microOption.Value
-    else ValueNone
 
 UnityFileSystem.Init()
 
@@ -85,19 +117,27 @@ for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlag
         let tto = TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id)
         match tto with
         | :? TypeTreeObject as tto ->
-            if tto.Node.Children |> Seq.exists (fun c -> c.Type.StartsWith("PPtr")) then
-                let name =
-                    match tto.Value.TryGetValue("m_Name") with
-                    | true, (:? TypeTreeValue<string> as name) -> name.Value
-                    | _ -> ""
+            //if tto.Node.Children |> Seq.exists (fun c -> c.Type.StartsWith("PPtr")) then
+            let name =
+                match tto.Value.TryGetValue("m_Name") with
+                | true, (:? TypeTreeValue<string> as name) -> name.Value
+                | _ -> ""
 
-                if name <> "" then
-                    let filename = Path.Join(node.Path, $"{name}.dump.txt")
+            let invalid = Path.GetInvalidFileNameChars()
 
-                    if Directory.Exists(Path.GetDirectoryName(filename)) |> not then
-                        Directory.CreateDirectory(Path.GetDirectoryName(filename)) |> ignore
+            let name = 
+                name
+                |> Seq.map (fun c -> if invalid |> Array.contains c then '_' else c)
+                |> Seq.toArray
+                |> System.String
 
-                    File.WriteAllText(filename, tto.ToString())
+            //if name <> "" then
+            let filename = Path.Join(node.Path, $"{name}.{o.Id}.{tto.Node.Type}.txt")
+
+            if Directory.Exists(Path.GetDirectoryName(filename)) |> not then
+                Directory.CreateDirectory(Path.GetDirectoryName(filename)) |> ignore
+
+            File.WriteAllText(filename, tto.ToString())
 
         | _ -> ()
         
@@ -128,11 +168,6 @@ for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlag
                 pptr.TryGet(sf, reader)
                 |> toValueOption
                 |> ValueOption.bind (fun tto -> tto.TryGetObject() |> toValueOption)
-
-            //let o = sf.GetObjectByID(pptr.PathID)
-            //let tto =
-            //    TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id).TryGetObject()
-            //    |> toValueOption
 
             let ttoName =
                 tto
