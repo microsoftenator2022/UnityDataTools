@@ -1,3 +1,6 @@
+open System.IO
+
+
 #r @"bin\Debug\net8.0\MicroUtils.dll"
 #r @"bin\Debug\net8.0\UnityMicro.dll"
 
@@ -14,16 +17,15 @@ open UnityMicro.TypeTree
 
 type TypeTreeObject = TypeTreeValue<System.Collections.Generic.Dictionary<string, ITypeTreeObject>>
 
-let rec dumpTypeTree (ttn : TypeTreeNode) =
-    seq {
-        yield sprintf "%s : %s" ttn.Name ttn.Type
+let rec dumpTypeTree (ttn : TypeTreeNode) = seq {
+    yield sprintf "%s : %s" ttn.Name ttn.Type
         
-        for n in ttn.Children do
-            yield!
-                dumpTypeTree n
-                |> Seq.map (sprintf "  %s")
-    }
-    
+    for n in ttn.Children do
+        yield!
+            dumpTypeTree n
+            |> Seq.map (sprintf "  %s")
+}
+
 UnityFileSystem.Init()
 
 let archive = UnityFileSystem.MountArchive(bundlePath, mountPoint)
@@ -37,13 +39,23 @@ for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlag
     
     let sw = System.Diagnostics.Stopwatch.StartNew()
 
-    let lines =    
+    let trees =
         sf.Objects
         |> Seq.map (fun o -> sf.GetTypeTreeRoot o.Id)
         |> Seq.distinctBy (fun t -> t.Handle)
-        |> Seq.collect dumpTypeTree
+        |> Seq.groupBy (fun t -> t.Type)
+        |> Seq.collect (fun (t, tts) ->
+            if tts |> Seq.length = 1 then
+                [t, tts |> Seq.head] |> Seq.ofList
+            else
+                tts
+                |> Seq.mapi (fun i tt -> $"{t}{i}", tt))
 
-    System.IO.File.WriteAllLines("dump.txt", lines)
+    if Directory.Exists "trees" |> not then
+        Directory.CreateDirectory "trees" |> ignore
+
+    for (n, tree) in trees do
+        File.WriteAllLines(Path.Join("trees", $"{n}.txt"), dumpTypeTree tree)
 
     sw.Stop()
 
@@ -54,20 +66,23 @@ for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlag
     for o in sf.Objects do
         let tto = TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id)
         match tto with
-        | :? TypeTreeObject as o ->
-            if o.Node.Children |> Seq.exists (fun c -> c.Type.StartsWith("PPtr")) then
+        | :? TypeTreeObject as tto ->
+            if tto.Node.Children |> Seq.exists (fun c -> c.Type.StartsWith("PPtr")) then
                 let name =
-                    match o.Value.TryGetValue("m_Name") with
+                    match tto.Value.TryGetValue("m_Name") with
                     | true, (:? TypeTreeValue<string> as name) -> name.Value
                     | _ -> ""
 
                 if name <> "" then
-                    printfn "'%s' (%s : %s)" name o.Node.Name o.Node.Type
-                    for n in o.Value.Values |> Seq.where (fun n -> n.Node.Type.StartsWith("PPtr")) do
-                        printfn "  %s : %s" n.Node.Name n.Node.Type
+                    let filename = Path.Join(node.Path, $"{name}.dump.txt")
+
+                    if Directory.Exists(Path.GetDirectoryName(filename)) |> not then
+                        Directory.CreateDirectory(Path.GetDirectoryName(filename)) |> ignore
+
+                    File.WriteAllText(filename, tto.ToString())
 
         | _ -> ()
-
+        
         i <- i + 1
 
     printfn "Read %i objects" i

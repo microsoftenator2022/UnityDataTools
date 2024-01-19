@@ -1,10 +1,13 @@
 ﻿namespace UnityMicro.TypeTree;
 
 using System.Diagnostics;
+using System.Text;
 
 using MicroUtils;
 
 using UnityDataTools.FileSystem;
+
+using UnityMicro.Parsers;
 
 public interface ITypeTreeObject
 {
@@ -20,7 +23,84 @@ public readonly record struct TypeTreeValue<T>(
     long StartOffset,
     long EndOffset,
     T Value) : ITypeTreeObject
-{ }
+{
+    static IEnumerable<(int, string)> GetToStringLines(ITypeTreeObject obj, int indentLevel = 0)
+    {
+        yield return (indentLevel, $"{obj.Node.Name} : {obj.Node.Type} ({obj.Node.CSharpType})");
+        if (obj is TypeTreeValue<Dictionary<string, ITypeTreeObject>> tto)
+        {
+            yield return (indentLevel, "{");
+            foreach (var n in tto.Value.Values)
+                foreach (var (il, line) in GetToStringLines(n, indentLevel + 1))
+                    yield return (il, $"{line}");
+            yield return (indentLevel, "}");
+            yield break;
+        }
+
+        var type = obj.GetType();
+
+        if (type.IsConstructedGenericType && type.GenericTypeArguments.Any(at => typeof(System.Array).IsAssignableFrom(at)))
+        {
+            var arr = type.GetProperty(nameof(Value))?.GetValue(obj) as System.Array;
+            //yield return $"{arr?.Length ?? 0} items";
+
+            if (arr?.Length is 0)
+            {
+                yield return (indentLevel, "[]");
+                yield break;
+            }
+
+            yield return (indentLevel, "[");
+         
+            if (obj is TypeTreeValue<ITypeTreeObject[]> objArr)
+            {
+                foreach (var n in objArr.Value)
+                    foreach (var (il, line) in GetToStringLines(n, indentLevel + 1))
+                        yield return (il, $"{line},");
+            }
+            else if (arr is not null)
+            {
+                yield return (indentLevel + 1, $"{string.Join(", ", arr.Cast<object>().Select(o => o.ToString()))}");
+            }
+
+            yield return (indentLevel, "]");
+            yield break;
+        }
+
+        if (type.IsConstructedGenericType)
+        {
+            var v = type.GetProperty(nameof(Value))?.GetValue(obj);
+
+            if (v is ITypeTreeObject o)
+            {
+                foreach (var line in GetToStringLines(o, indentLevel + 1))
+                    yield return (indentLevel, $"{line}");
+            }
+            else
+                yield return (indentLevel + 1, $"= {v?.ToString() ?? "NULL"}");
+        }
+    }
+
+    static string GetIndent(int level) => String.Concat(Enumerable.Repeat("  ", level));
+
+    public override string ToString()
+    {
+        var sb = new StringBuilder();
+        foreach (var (indentLevel, s) in GetToStringLines(this))
+        {
+            var indent = GetIndent(indentLevel);
+
+            var lines = s.ReplaceLineEndings("\n").Split("\n");
+
+            foreach (var line in lines)
+            {
+                sb.AppendLine($"{indent}{line}");
+            }
+        }
+
+        return sb.ToString();
+    }
+}
 
 public readonly record struct TypeTreeIgnored(
     TypeTreeNode Node,
@@ -209,7 +289,7 @@ public static class TypeTreeObject
                 {
                     if (node.IsManagedReferenceRegistry)
                     {
-                        if (!node.IsLeaf && ancestors.Count() > 0)
+                        if (!node.IsLeaf && !ancestors.IsEmpty)
                         {
                             return Option.Some(new TypeTreeIgnored(node, ancestors, offset, node.SizeSafe()) as ITypeTreeObject);
                         }
@@ -221,6 +301,11 @@ public static class TypeTreeObject
                 })
                 .DefaultWith(() => TypeTreeUtil.GetObject(reader, ancestors, offset, node));
 
+            result =
+                ObjectParsers.Parsers.Value.TryFind(p => p.CanParse(result.Node))
+                    .Bind(p => p.TryParse(result))
+                    .DefaultValue(result);
+
             return result;
         }
         catch (Exception ex)
@@ -231,5 +316,32 @@ public static class TypeTreeObject
                 $"Exception in node {node.Type} \"{node.Name}\" at offset {offset}:\n  {ex.Message}", ex);
         }
     }
-}
 
+    public static Option<Func<T>> TryGetValue<T>(this ITypeTreeObject tto)
+    {
+        if (tto is TypeTreeValue<T> obj)
+            return Option.Some(() => obj.Value);
+
+        return Option<Func<T>>.None;
+    }
+
+    //public static Option<T[]> TryGetArray<T>(this ITypeTreeObject tto) => TryGetValue<T[]>(tto).Map(get => get());
+
+    //public static Option<ITypeTreeObject[]> TryGetArray(this ITypeTreeObject tto) => TryGetArray<ITypeTreeObject>(tto);
+
+    public static Option<TypeTreeValue<Dictionary<string, ITypeTreeObject>>> TryGetObject(this ITypeTreeObject tto)
+    {
+        if (tto is TypeTreeValue<Dictionary<string, ITypeTreeObject>> obj)
+            return Option.Some(obj);
+        
+        return Option<TypeTreeValue<Dictionary<string, ITypeTreeObject>>>.None;
+    }
+
+    public static Option<Func<T>> TryGetField<T>(this TypeTreeValue<Dictionary<string, ITypeTreeObject>> tto, string fieldName)
+    {
+        if (tto.Value.TryGetValue(fieldName, out var value))
+            return value.TryGetValue<T>();
+
+        return Option<Func<T>>.None;
+    }
+}
