@@ -23,6 +23,24 @@ public class SerializedFile : IDisposable
     public IReadOnlyList<ExternalReference> ExternalReferences => m_ExternalReferences.AsReadOnly();
     public IReadOnlyList<ObjectInfo> Objects => Array.AsReadOnly(m_Objects);
 
+    private readonly Dictionary<long, int> idToIndex = [];
+    public ObjectInfo GetObjectByID(long pathID)
+    {
+        if (!idToIndex.ContainsKey(pathID))
+        {
+            for (var i = 0; i < m_Objects.Length; i++)
+            {
+                if (m_Objects[i].Id == pathID)
+                {
+                    idToIndex[pathID] = i;
+                    break;
+                }
+            }
+        }
+
+        return m_Objects[idToIndex[pathID]];
+    }
+
     internal SerializedFile(SerializedFileHandle handle)
     {
         m_Handle = handle;
