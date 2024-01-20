@@ -32,17 +32,21 @@ public static class PPtrExtensions
     }
 }
 
-public readonly partial record struct PPtr(string TypeName, int FileID, long PathID)
+public readonly partial record struct PPtr(string TypeName, int FileID, long PathID);
+
+partial class PPtrParser : IObjectParser
 {
     [GeneratedRegex(@"^PPtr<(\w+)>$")]
     internal static partial Regex PPtrPattern();
 
-    public static Option<PPtr> FromTypeTree(ITypeTreeObject obj)
+    public bool CanParse(TypeTreeNode node) => PPtrPattern().IsMatch(node.Type);
+    public Type ObjectType(TypeTreeNode node) => typeof(PPtr);
+    public Option<ITypeTreeObject> TryParse(ITypeTreeObject obj)
     {
         var match = PPtrPattern().Match(obj.NodeType());
 
         if (!match.Success)
-            return Option<PPtr>.None;
+            return Option<ITypeTreeObject>.None;
 
         var typeName = match.Groups[1].Value;
 
@@ -51,16 +55,13 @@ public readonly partial record struct PPtr(string TypeName, int FileID, long Pat
         var pid = p.Bind(p => p.TryGetField<long>("m_PathID")).Map(f => f());
 
         if (fid.IsSome && pid.IsSome)
-            return Option.Some(new PPtr(typeName, fid.Value, pid.Value));
+            return Option.Some<ITypeTreeObject>(new TypeTreeValue<PPtr>(
+                obj.Node,
+                obj.Ancestors,
+                obj.StartOffset,
+                obj.EndOffset,
+                new PPtr(typeName, fid.Value, pid.Value)));
 
-        return Option<PPtr>.None;
+        return Option<ITypeTreeObject>.None;
     }
-}
-
-class PPtrParser : IObjectParser
-{
-    public bool CanParse(TypeTreeNode node) => PPtr.PPtrPattern().IsMatch(node.Type);
-    public Type ObjectType(TypeTreeNode node) => typeof(PPtr);
-    public Option<ITypeTreeObject> TryParse(ITypeTreeObject obj) => PPtr.FromTypeTree(obj).Map<PPtr, ITypeTreeObject>(pptr =>
-        new TypeTreeValue<PPtr>(obj.Node, obj.Ancestors, obj.StartOffset, obj.EndOffset, pptr));
 }
