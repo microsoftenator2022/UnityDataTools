@@ -15,6 +15,9 @@ let mountPoint = @"archive:/"
 
 let bundlePath = @"D:\SteamLibrary\steamapps\common\Warhammer 40,000 Rogue Trader\Bundles\ui"
 
+let bufferSize = 4 * 1024
+let maxBufferSize = 32 * 1024 * 1024
+
 type TypeTreeObject = TypeTreeValue<System.Collections.Generic.Dictionary<string, ITypeTreeObject>>
 
 let toValueOption<'a> (microOption : Functional.Option<'a>) : 'a voption =
@@ -30,39 +33,6 @@ let tryGetField<'a> fieldName (tto : TypeTreeObject) : 'a voption =
     tto.TryGetField<'a>(fieldName)
     |> toValueOption
     |> ValueOption.map (fun f -> f.Invoke())
-
-//let formatAsFileSize (size : int64) : string =
-//    if size > 10L * pown 2L 40 then
-//        size / (pown 2L 30)
-//        |> sprintf "%i TiB"
-//    elif size > 10L * pown 2L 30 then
-//        size / (pown 2L 30)
-//        |> sprintf "%i GiB"
-//    elif size > 10L * pown 2L 20 then
-//        size / (pown 2L 20)
-//        |> sprintf "%i MiB"
-//    elif size > 10L * pown 2L 10 then
-//        size / (pown 2L 10)
-//        |> sprintf "%i KiB"
-//    else
-//        size |> sprintf "%i B"
-
-//UnityFileSystem.Init()
-
-//let archive = UnityFileSystem.MountArchive(bundlePath, mountPoint)
-
-//for n in archive.Nodes do
-//    printfn "%s" n.Path
-//    n.Size |> formatAsFileSize |> printfn "  Size: %s"
-//    printfn "  Flags %A" n.Flags
-
-//    if n.Flags.HasFlag(ArchiveNodeFlags.SerializedFile) then
-//        use sf = UnityFileSystem.OpenSerializedFile n.Path
-        
-
-//        ()
-
-//UnityFileSystem.Cleanup()
 
 let rec dumpTypeTree (ttn : TypeTreeNode) = seq {
     yield sprintf "%s : %s" ttn.Name ttn.Type
@@ -87,183 +57,231 @@ let getStreamingInfos (tto: ITypeTreeObject) =
     tto.Find(fun c -> c.Node.Type = "StreamingInfo")
     |> Seq.choose (function :? TypeTreeObject as o -> Some o | _ -> None)
 
-let invalid = Path.GetInvalidFileNameChars()
+let invalidFileChars = Path.GetInvalidFileNameChars()
 
-UnityFileSystem.Init()
+let formatAsFileSize (size : int64) : string =
+    if size > 10L * pown 2L 40 then
+        size / (pown 2L 30)
+        |> sprintf "%i TiB"
+    elif size > 10L * pown 2L 30 then
+        size / (pown 2L 30)
+        |> sprintf "%i GiB"
+    elif size > 10L * pown 2L 20 then
+        size / (pown 2L 20)
+        |> sprintf "%i MiB"
+    elif size > 10L * pown 2L 10 then
+        size / (pown 2L 10)
+        |> sprintf "%i KiB"
+    else
+        size |> sprintf "%i B"
 
-let archive = UnityFileSystem.MountArchive(bundlePath, mountPoint)
+//UnityFileSystem.Init()
 
-for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlags.SerializedFile)) do
-    let path = $"{mountPoint}{node.Path}"
-    printfn "%s" path
+//let archive = UnityFileSystem.MountArchive(bundlePath, mountPoint)
 
-    use sf = UnityFileSystem.OpenSerializedFile(path)
-    use reader = new UnityFileReader(path, 1024 * 1024 * 1024)
+//for n in archive.Nodes do
+    //printfn "%s" n.Path
+    //n.Size |> formatAsFileSize |> printfn "  Size: %s"
+    //printfn "  Flags %A" n.Flags
 
-    let sis =
-        sf.Objects
-        |> Seq.map (fun o -> TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id))
-        |> Seq.map (fun tto -> tto, getStreamingInfos tto)
-        |> Seq.where (fun (_, sis) -> sis |> Seq.isEmpty |> not)
-        |> Seq.cache
+//UnityFileSystem.Cleanup()
 
-    //sis
-    //|> Seq.iter (fun (tto, sis) ->
-    //    let name = 
-    //        tto.TryGetObject()
-    //        |> toValueOption
-    //        |> ValueOption.bind (fun tto -> tto.TryGetField<string>("m_Name") |> toValueOption)
-    //        |> ValueOption.map (fun f -> f.Invoke())
-    //        |> ValueOption.defaultValue tto.Node.Name
+let testGetStream() =
 
-    //    (name, sis) |> printfn "%A")
+    UnityFileSystem.Init()
 
-    let (tto, streamInfos) =
-        sis |> Seq.head
+    use archive = UnityFileSystem.MountArchive(bundlePath, mountPoint)
 
-    let name = 
-        tto
-        |> tryGetObject
-        |> ValueOption.bind (tryGetField "m_Name")
-        |> ValueOption.defaultValue tto.Node.Name
+    for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlags.SerializedFile)) do
+        let path = $"{mountPoint}{node.Path}"
+        printfn "%s" path
 
-    printfn "%s : %s (%s) StreamingInfo:" name tto.Node.Type (tto.Node.CSharpType.ToString())
+        use sf = UnityFileSystem.OpenSerializedFile(path)
+        use reader = new UnityFileReader(path, bufferSize, maxBufferSize)
 
-    let si =
-        streamInfos
-        |> Seq.head
+        let sis =
+            sf.Objects
+            |> Seq.map (fun o -> TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id))
+            |> Seq.map (fun tto -> tto, getStreamingInfos tto)
+            |> Seq.where (fun (_, sis) -> sis |> Seq.isEmpty |> not)
+            |> Seq.cache
 
-    let (resPath, offset, length) =
-        (si |> tryGetField<string> "path",
-        si |> tryGetField<uint64> "offset",
-        si |> tryGetField<uint32> "size")
-        |||> ValueOption.map3 (fun x y z -> x, y, z)
-        |> ValueOption.toList
-        |> Seq.head
+        //sis
+        //|> Seq.iter (fun (tto, sis) ->
+        //    let name = 
+        //        tto.TryGetObject()
+        //        |> toValueOption
+        //        |> ValueOption.bind (fun tto -> tto.TryGetField<string>("m_Name") |> toValueOption)
+        //        |> ValueOption.map (fun f -> f.Invoke())
+        //        |> ValueOption.defaultValue tto.Node.Name
 
-    let resPath = resPath.Replace($"{path}/", "")
-    let resPath = $"{mountPoint}{resPath}"
+        //    (name, sis) |> printfn "%A")
 
-    printfn "Resource path: %s" resPath
+        let (tto, streamInfos) =
+            sis |> Seq.head
 
-    use resReader = new UnityFileReader(resPath, 256 * 1024 * 1024)
+        let name = 
+            tto
+            |> tryGetObject
+            |> ValueOption.bind (tryGetField "m_Name")
+            |> ValueOption.defaultValue tto.Node.Name
 
-    let arr = Array.zeroCreate<byte> (length |> int32)
+        printfn "%s : %s (%s) StreamingInfo:" name tto.Node.Type (tto.Node.CSharpType.ToString())
 
-    resReader.ReadArray(offset |> int64, length |> int32, arr)
+        let si =
+            streamInfos
+            |> Seq.head
 
-    arr |> printfn "Bytes: %A"
+        let (resPath, offset, length) =
+            (si |> tryGetField<string> "path",
+            si |> tryGetField<uint64> "offset",
+            si |> tryGetField<uint32> "size")
+            |||> ValueOption.map3 (fun x y z -> x, y, z)
+            |> ValueOption.get
 
-    //use resStreamReader = new UnityFileReader(head, 1024 * 1024 * 256)
+        let resPath = resPath.Replace($"{path}/", "")
+        let resPath = $"{mountPoint}{resPath}"
 
-    //let sw = System.Diagnostics.Stopwatch.StartNew()
+        printfn "Resource path: %s" resPath
 
-    //let trees =
-    //    sf.Objects
-    //    |> Seq.map (fun o -> sf.GetTypeTreeRoot o.Id)
-    //    |> Seq.distinctBy (fun t -> t.Handle)
-    //    |> Seq.groupBy (fun t -> t.Type)
-    //    |> Seq.collect (fun (t, tts) ->
-    //        if tts |> Seq.length = 1 then
-    //            [t, tts |> Seq.head] |> Seq.ofList
-    //        else
-    //            tts
-    //            |> Seq.mapi (fun i tt -> $"{t}{i}", tt))
+        use resReader = new UnityFileReader(resPath, length |> int32)
 
-    //if Directory.Exists "TypeTrees" |> not then
-    //    Directory.CreateDirectory "TypeTrees" |> ignore
+        let arr = Array.zeroCreate<byte> (length |> int32)
 
-    //for (n, tree) in trees do
-    //    File.WriteAllLines(Path.Join("TypeTrees", $"{n}.txt"), dumpTypeTree tree)
+        resReader.ReadArray(offset |> int64, length |> int32, arr)
 
-    //sw.Stop()
+        arr |> printfn "Bytes: %A"
 
-    //printfn "Dumped type trees in %ims" sw.ElapsedMilliseconds
+    UnityFileSystem.Cleanup()
 
-    //sw.Restart()
+let dump outputDir =
+    UnityFileSystem.Init()
 
-    //let mutable i = 0
+    use archive = UnityFileSystem.MountArchive(bundlePath, mountPoint)
 
-    //for o in sf.Objects do
-    //    let tto = TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id)
-    //    match tto with
-    //    | :? TypeTreeObject as tto ->
-    //        let name =
-    //            match tto.Value.TryGetValue("m_Name") with
-    //            | true, (:? TypeTreeValue<string> as name) -> name.Value
-    //            | _ -> ""
+    for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlags.SerializedFile)) do
+        let path = $"{mountPoint}{node.Path}"
+        printfn "%s" node.Path
+        
+        node.Size |> formatAsFileSize |> printfn "  Size: %s"
+        printfn "  Flags %A" node.Flags
 
-    //        let name =
-    //            name
-    //            |> Seq.map (fun c -> if invalid |> Array.contains c then '_' else c)
-    //            |> Seq.toArray
-    //            |> System.String
+        use sf = UnityFileSystem.OpenSerializedFile(path)
+        use reader = new UnityFileReader(path, bufferSize, maxBufferSize)
+        
+        let sw = System.Diagnostics.Stopwatch.StartNew()
 
-    //        let filename = Path.Join(node.Path, $"{name}.{o.Id}.{tto.Node.Type}.txt")
+        let trees =
+            sf.Objects
+            |> Seq.map (fun o -> sf.GetTypeTreeRoot o.Id)
+            |> Seq.distinctBy (fun t -> t.Handle)
+            |> Seq.groupBy (fun t -> t.Type)
+            |> Seq.collect (fun (t, tts) ->
+                if tts |> Seq.length = 1 then
+                    [t, tts |> Seq.head] |> Seq.ofList
+                else
+                    tts
+                    |> Seq.mapi (fun i tt -> $"{t}{i}", tt))
 
-    //        if Directory.Exists(Path.GetDirectoryName(filename)) |> not then
-    //            Directory.CreateDirectory(Path.GetDirectoryName(filename)) |> ignore
+        let typeTreesDumpPath = Path.Join(outputDir, "TypeTrees")
 
-    //        File.WriteAllText(filename, tto.ToString())
+        if Directory.Exists typeTreesDumpPath |> not then
+            Directory.CreateDirectory typeTreesDumpPath |> ignore
 
-    //    | _ -> ()
+        for (n, tree) in trees do
+            File.WriteAllLines(Path.Join(typeTreesDumpPath, $"{n}.txt"), dumpTypeTree tree)
+
+        sw.Stop()
+
+        printfn "Dumped type trees in %ims" sw.ElapsedMilliseconds
+
+        sw.Restart()
+
+        let mutable i = 0
+
+        for o in sf.Objects do
+            let tto = TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id)
+            match tto with
+            | :? TypeTreeObject as tto ->
+                let name =
+                    match tto.Value.TryGetValue("m_Name") with
+                    | true, (:? TypeTreeValue<string> as name) -> name.Value
+                    | _ -> ""
+
+                let name =
+                    name
+                    |> Seq.map (fun c -> if invalidFileChars |> Array.contains c then '_' else c)
+                    |> Seq.toArray
+                    |> System.String
+
+                let filename = Path.Join(outputDir, node.Path, $"{name}.{o.Id}.{tto.Node.Type}.txt")
+
+                if Directory.Exists(Path.GetDirectoryName(filename)) |> not then
+                    Directory.CreateDirectory(Path.GetDirectoryName(filename)) |> ignore
+
+                File.WriteAllText(filename, tto.ToString())
+
+            | _ -> ()
 
         
-    //    i <- i + 1
+            i <- i + 1
 
-    //sw.Stop()
+        sw.Stop()
 
-    //printfn "Dumped %i objects in %ims" i sw.ElapsedMilliseconds
+        printfn "Dumped %i objects in %ims" i sw.ElapsedMilliseconds
 
-    //sw.Restart()
+        sw.Restart()
 
-    //let pptrs =
-    //    sf.Objects
-    //    |> Seq.map (fun o -> TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id))
-    //    |> Seq.collect getPPtrs
-    //    |> Seq.distinct
-    //    |> Seq.cache
+        let pptrs =
+            sf.Objects
+            |> Seq.map (fun o -> TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id))
+            |> Seq.collect getPPtrs
+            |> Seq.distinct
+            |> Seq.cache
 
-    //pptrs
-    //|> Seq.length
-    //|> printfn "Found %i unique PPtrs"
+        pptrs
+        |> Seq.length
+        |> printfn "Found %i unique PPtrs"
 
-    //let pptrs =
-    //    pptrs
-    //    |> Seq.where (fun pptr -> pptr.FileID = 0 && pptr.PathID <> 0)
-    //    |> Seq.map (fun pptr -> 
-    //        let tto =
-    //            pptr.TryGet(sf, reader)
-    //            |> toValueOption
-    //            |> ValueOption.bind (fun tto -> tto.TryGetObject() |> toValueOption)
+        let pptrs =
+            pptrs
+            |> Seq.where (fun pptr -> pptr.FileID = 0 && pptr.PathID <> 0)
+            |> Seq.map (fun pptr -> 
+                let tto =
+                    pptr.TryGet(sf, reader)
+                    |> toValueOption
+                    |> ValueOption.bind (fun tto -> tto.TryGetObject() |> toValueOption)
 
-    //        let ttoName =
-    //            tto
-    //            |> ValueOption.bind (fun tto -> tto.TryGetField("m_Name") |> toValueOption)
-    //            |> ValueOption.map(fun f -> f.Invoke().ToString())
+                let ttoName =
+                    tto
+                    |> ValueOption.bind (fun tto -> tto.TryGetField("m_Name") |> toValueOption)
+                    |> ValueOption.map(fun f -> f.Invoke().ToString())
 
-    //        pptr, tto, ttoName)
-    //    |> Seq.cache
+                pptr, tto, ttoName)
+            |> Seq.cache
     
-    //seq {
+        seq {
 
-    //    for (pptr, tto, ttoName) in pptrs do
-    //        match tto with
-    //        | ValueSome tto ->
-    //            let name = match ttoName with ValueSome name -> name | _ -> "<anonymous>"
+            for (pptr, tto, ttoName) in pptrs do
+                match tto with
+                | ValueSome tto ->
+                    let name = match ttoName with ValueSome name -> name | _ -> "<anonymous>"
 
-    //            yield sprintf "%A -> %s : %s (%s)" pptr name tto.Node.Type (tto.Node.CSharpType.ToString())
-    //        | _ -> ()
-    //}
-    //|> fun lines -> File.WriteAllLines("pptrs.txt", lines)
+                    yield sprintf "%A -> %s : %s (%s)" pptr name tto.Node.Type (tto.Node.CSharpType.ToString())
+                | _ -> ()
+        }
+        |> fun lines -> File.WriteAllLines(Path.Join(outputDir, "pptrs.txt"), lines)
 
-    //sw.Stop()
+        sw.Stop()
 
-    //(pptrs
-    //|> Seq.length,
-    //sw.ElapsedMilliseconds)
-    //||> printfn "Dumped %i PPtrs in %ims" 
+        (pptrs
+        |> Seq.length,
+        sw.ElapsedMilliseconds)
+        ||> printfn "Dumped %i PPtrs in %ims" 
 
-printfn "Done"
+    printfn "Done"
 
-UnityFileSystem.Cleanup()
+    UnityFileSystem.Cleanup()
+
+if fsi.CommandLineArgs.Length > 1 && fsi.CommandLineArgs[1] <> "" then
+    dump fsi.CommandLineArgs[1]
