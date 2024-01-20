@@ -28,17 +28,15 @@ public class UnityFileReader : IDisposable
 
         m_Buffer = arrayPool.Rent(bufferStartSize);
         m_BufferStartInFile = 0;
-        m_BufferEndInFile = 0;
+        m_BufferEndInFile = -1;
 
         m_File = UnityFileSystem.OpenFile(path);
         Length = m_File.GetSize();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     bool isSubRange(long rangeStart, long rangeLength, long subRangeStart, long subRangeLength) =>
         subRangeStart >= rangeStart && (subRangeStart + subRangeLength) <= (rangeStart + rangeLength);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     bool isSubRangeOf((long start, long length) range, (long start, long length) subRange) =>
         isSubRange(range.start, range.length, subRange.start, subRange.length);
 
@@ -64,11 +62,12 @@ public class UnityFileReader : IDisposable
         var requestedRange = (fileOffset, count);
         
         var updateBuffer = false;
-
         long bufferLength = m_Buffer.Length;
         long bufferOffset = m_BufferStartInFile;
 
-        if (!isSubRangeOf((bufferOffset, bufferLength), requestedRange))
+        var dataLength = (m_BufferEndInFile - m_BufferStartInFile + 1);
+
+        if (dataLength < bufferLength || !isSubRangeOf((bufferOffset, bufferLength), requestedRange))
         {
             updateBuffer = true;
         }
@@ -92,10 +91,7 @@ public class UnityFileReader : IDisposable
                 (bufferOffset, bufferLength) = requestedRange;
                 bufferLength = Math.Max(bufferLength, bufferStartSize);
             }
-        }
 
-        if (updateBuffer)
-        {
             if (count > bufferLength)
                 throw new IOException("Requested size is larger than cache size");
 
@@ -110,23 +106,23 @@ public class UnityFileReader : IDisposable
             //if (m_BufferStartInFile != bufferOffset)
             //    Console.WriteLine($"Update buffer offset: {m_BufferStartInFile} -> {bufferOffset}");
 
-            //if (oldBuffer.Length != m_Buffer.Length)
-            //    Console.WriteLine($"Update buffer size: {oldBuffer.Length} -> {m_Buffer.Length}");
+            if (oldBuffer.Length != m_Buffer.Length)
+                Console.WriteLine($"Update buffer size: {oldBuffer.Length} -> {m_Buffer.Length}");
 
             m_BufferStartInFile = m_File.Seek(bufferOffset);
 
-            if (m_BufferStartInFile > fileOffset || m_BufferStartInFile + m_Buffer.Length < fileOffset + count)
+            if (m_BufferStartInFile > fileOffset || m_BufferStartInFile + bufferLength < fileOffset + count)
             {
                 Debugger.Break();
                 throw new IOException("Invalid file offset. " +
                     $"Requested {fileOffset} -> {fileOffset + count}, " +
-                    $"buffer {m_BufferStartInFile} -> {m_BufferStartInFile + m_Buffer.Length}");
+                    $"buffer {m_BufferStartInFile} -> {m_BufferStartInFile + bufferLength}");
             }
 
-            m_BufferEndInFile = m_File.Read(m_Buffer.Length, m_Buffer);
-            m_BufferEndInFile += m_BufferStartInFile;
+            var readCount = m_File.Read(bufferLength, m_Buffer);
+            m_BufferEndInFile = m_BufferStartInFile + readCount;
 
-            // Don't release the old one until here. Seems like the UnityFileSystemApi library expects to be able to
+            // Don't release the old buffer until here. Seems like the UnityFileSystemApi library expects to be able to
             // use the old buffer for the *next* read (cache for overlapping reads?)
             arrayPool.Return(oldBuffer);
         }
