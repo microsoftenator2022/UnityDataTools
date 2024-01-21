@@ -1,8 +1,8 @@
-﻿using System;
+﻿namespace UnityDataTools.FileSystem;
+
+using System;
 using System.Collections.Generic;
 using System.Text;
-
-namespace UnityDataTools.FileSystem;
 
 // An archive node is a file in an archive.
 public struct ArchiveNode

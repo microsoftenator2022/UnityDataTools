@@ -277,7 +277,7 @@ public static class TypeTreeUtil
 
 public static class TypeTreeObject
 {
-    public static ITypeTreeObject Get(
+    internal static ITypeTreeObject Get(
         UnityFileReader reader,
         MicroStack<TypeTreeNode> ancestors,
         long offset,

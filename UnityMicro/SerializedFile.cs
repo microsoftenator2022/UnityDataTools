@@ -1,8 +1,8 @@
-﻿using System;
+﻿namespace UnityDataTools.FileSystem;
+
+using System;
 using System.Collections.Generic;
 using System.Text;
-
-namespace UnityDataTools.FileSystem;
 
 public struct ExternalReference
 {

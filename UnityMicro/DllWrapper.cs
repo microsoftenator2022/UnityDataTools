@@ -1,8 +1,8 @@
-﻿using System;
+﻿namespace UnityDataTools.FileSystem;
+
+using System;
 using System.Runtime.InteropServices;
 using System.Text;
-
-namespace UnityDataTools.FileSystem;
 
 internal class UnityArchiveHandle : SafeHandle
 {

@@ -1,6 +1,6 @@
-﻿using System;
+﻿namespace UnityDataTools.FileSystem;
 
-namespace UnityDataTools.FileSystem;
+using System;
 
 // Use this class to read data from a Unity file.
 public class UnityFile : IDisposable

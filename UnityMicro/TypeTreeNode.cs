@@ -1,8 +1,8 @@
-﻿using System;
+﻿namespace UnityDataTools.FileSystem;
+
+using System;
 using System.Collections.Generic;
 using System.Text;
-
-namespace UnityDataTools.FileSystem;
 
 // A TypeTreeNode represents how a property of a serialized object was written to disk.
 // See the TextDumper library for an example.

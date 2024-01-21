@@ -1,7 +1,7 @@
-﻿using System;
-using System.IO;
+﻿namespace UnityDataTools.FileSystem;
 
-namespace UnityDataTools.FileSystem;
+using System;
+using System.IO;
 
 // This is the main entry point. Provides methods to mount archives and open files.
 public static class UnityFileSystem

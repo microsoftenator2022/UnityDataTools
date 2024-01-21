@@ -1,12 +1,12 @@
-﻿using System;
+﻿namespace UnityDataTools.FileSystem;
+
+using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 //using Force.Crc32;
-
-namespace UnityDataTools.FileSystem;
 
 // This class can be used to read typed data from a UnityFile. Is uses a buffer for better performance.
 public class UnityFileReader : IDisposable

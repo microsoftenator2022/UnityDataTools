@@ -56,7 +56,7 @@ public readonly record struct PPtr(string TypeName, int FileID, long PathID, str
     }
 
     public override string ToString() => this == NullPtr ? $"{{ {nameof(NullPtr)} }}" :
-        $"{{ {nameof(TypeName)} = \"{TypeName}\", {nameof(FileID)} = {FileID}, {nameof(PathID)} = {PathID} }}";
+        $"PPtr {{ {nameof(TypeName)} = \"{TypeName}\", {nameof(FileID)} = {FileID}, {nameof(PathID)} = {PathID}, SerializedFile = {SerializedFilePath} }}";
 }
 
 partial class PPtrParser : IObjectParser
