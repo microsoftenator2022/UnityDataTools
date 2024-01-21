@@ -191,7 +191,8 @@ public static class TypeTreeUtil
         UnityFileReader reader,
         MicroStack<TypeTreeNode> ancestors,
         long startOffset,
-        TypeTreeNode node)
+        TypeTreeNode node,
+        SerializedFile sf)
     {
         ITypeTreeObject value(long endOffset, System.Array value) =>
             new TypeTreeValue<System.Array>(node, ancestors, startOffset, endOffset, value);
@@ -228,7 +229,7 @@ public static class TypeTreeUtil
         {
             for (var i = 0; i < length; i++)
             {
-                elements[i] = TypeTreeObject.Get(reader, (node, ancestors), offset, dataNode);
+                elements[i] = TypeTreeObject.Get(reader, (node, ancestors), offset, dataNode, sf);
 
                 offset = elements[i].NextNodeOffset();
             }
@@ -241,7 +242,8 @@ public static class TypeTreeUtil
         UnityFileReader reader,
         MicroStack<TypeTreeNode> ancestors,
         long startOffset,
-        TypeTreeNode node)
+        TypeTreeNode node,
+        SerializedFile sf)
     {
         TypeTreeValue<Dictionary<string, ITypeTreeObject>> value(
             long endOffset,
@@ -257,7 +259,7 @@ public static class TypeTreeUtil
             var childNode = node.Children[i];
             var childOffset = offset;
 
-            var child = TypeTreeObject.Get(reader, (node, ancestors), childOffset, childNode);
+            var child = TypeTreeObject.Get(reader, (node, ancestors), childOffset, childNode, sf);
             children[i] = child;
             offset = child.NextNodeOffset();
         }
@@ -280,13 +282,13 @@ public static class TypeTreeObject
         MicroStack<TypeTreeNode> ancestors,
         long offset,
         TypeTreeNode node,
-        SerializedFile? sf = null)
+        SerializedFile sf)
     {
         try
         {
             var result = TypeTreeUtil.TryIntegralValue(reader, ancestors, offset, node)
                 .OrElseWith(() => TypeTreeUtil.TryString(reader, ancestors, offset, node))
-                .OrElseWith(() => TypeTreeUtil.TryArray(reader, ancestors, offset, node))
+                .OrElseWith(() => TypeTreeUtil.TryArray(reader, ancestors, offset, node, sf))
                 .OrElseWith(() =>
                 {
                     if (node.IsManagedReferenceRegistry)
@@ -301,11 +303,11 @@ public static class TypeTreeObject
 
                     return Option<ITypeTreeObject>.None;
                 })
-                .DefaultWith(() => TypeTreeUtil.GetObject(reader, ancestors, offset, node));
+                .DefaultWith(() => TypeTreeUtil.GetObject(reader, ancestors, offset, node, sf));
 
             result =
                 ObjectParsers.Parsers.Value.TryFind(p => p.CanParse(result.Node))
-                    .Bind(p => p.TryParse(result))
+                    .Bind(p => p.TryParse(result, sf))
                     .DefaultValue(result);
 
             return result;
@@ -342,12 +344,12 @@ public static class TypeTreeObject
         }
     }
 
-    public static Option<Func<T>> TryGetValue<T>(this ITypeTreeObject tto)
+    public static Option<Func<T?>> TryGetValue<T>(this ITypeTreeObject tto)
     {
-        if (tto is TypeTreeValue<T> obj)
+        if (tto is TypeTreeValue<T?> obj)
             return Option.Some(() => obj.Value);
 
-        return Option<Func<T>>.None;
+        return Option<Func<T?>>.None;
     }
 
     //public static Option<T[]> TryGetArray<T>(this ITypeTreeObject tto) => TryGetValue<T[]>(tto).Map(get => get());
@@ -362,11 +364,14 @@ public static class TypeTreeObject
         return Option<TypeTreeValue<Dictionary<string, ITypeTreeObject>>>.None;
     }
 
-    public static Option<Func<T>> TryGetField<T>(this TypeTreeValue<Dictionary<string, ITypeTreeObject>> tto, string fieldName)
+    public static Option<Func<T?>> TryGetField<T>(this TypeTreeValue<Dictionary<string, ITypeTreeObject>> tto, string fieldName)
     {
         if (tto.Value.TryGetValue(fieldName, out var value))
-            return value.TryGetValue<T>();
+            return value.TryGetValue<T?>();
 
-        return Option<Func<T>>.None;
+        return Option<Func<T?>>.None;
     }
+
+    //public static T? TryGetFieldValue<T>(this TypeTreeValue<Dictionary<string, ITypeTreeObject>> tto, string fieldName) =>
+    //    tto.TryGetField<T>(fieldName).DefaultValue(() => default!)();
 }

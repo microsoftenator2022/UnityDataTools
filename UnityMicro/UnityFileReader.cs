@@ -34,11 +34,11 @@ public class UnityFileReader : IDisposable
         Length = m_File.GetSize();
     }
 
-    bool isSubRange(long rangeStart, long rangeLength, long subRangeStart, long subRangeLength) =>
+    static bool IsSubRangeOf(long rangeStart, long rangeLength, long subRangeStart, long subRangeLength) =>
         subRangeStart >= rangeStart && (subRangeStart + subRangeLength) <= (rangeStart + rangeLength);
 
-    bool isSubRangeOf((long start, long length) range, (long start, long length) subRange) =>
-        isSubRange(range.start, range.length, subRange.start, subRange.length);
+    static bool IsSubRangeOf((long start, long length) range, (long start, long length) subRange) =>
+        IsSubRangeOf(range.start, range.length, subRange.start, subRange.length);
 
     int GetBufferOffset(long fileOffset, int count)
     {
@@ -67,18 +67,18 @@ public class UnityFileReader : IDisposable
 
         var dataLength = (m_BufferEndInFile - m_BufferStartInFile + 1);
 
-        if (dataLength < bufferLength || !isSubRangeOf((bufferOffset, bufferLength), requestedRange))
+        if (dataLength < bufferLength || !IsSubRangeOf((bufferOffset, bufferLength), requestedRange))
         {
             updateBuffer = true;
         }
 
         if (updateBuffer)
         {
-            if (isSubRangeOf((bufferOffset, bufferLength * 2), requestedRange))
+            if (IsSubRangeOf((bufferOffset, bufferLength * 2), requestedRange))
             {
                 bufferLength *= 2;
             }
-            else if (isSubRangeOf((bufferOffset - bufferLength, bufferLength * 2), requestedRange))
+            else if (IsSubRangeOf((bufferOffset - bufferLength, bufferLength * 2), requestedRange))
             {
                 bufferOffset = Math.Max(bufferOffset - bufferLength, 0);
                 bufferLength *= 2;
@@ -86,7 +86,7 @@ public class UnityFileReader : IDisposable
             
             bufferLength = Math.Min(bufferLength, maxBufferSize);
 
-            if (!isSubRangeOf((bufferOffset, bufferLength), requestedRange))
+            if (!IsSubRangeOf((bufferOffset, bufferLength), requestedRange))
             {
                 (bufferOffset, bufferLength) = requestedRange;
                 bufferLength = Math.Max(bufferLength, bufferStartSize);
@@ -106,8 +106,8 @@ public class UnityFileReader : IDisposable
             //if (m_BufferStartInFile != bufferOffset)
             //    Console.WriteLine($"Update buffer offset: {m_BufferStartInFile} -> {bufferOffset}");
 
-            if (oldBuffer.Length != m_Buffer.Length)
-                Console.WriteLine($"Update buffer size: {oldBuffer.Length} -> {m_Buffer.Length}");
+            //if (oldBuffer.Length != m_Buffer.Length)
+            //    Console.WriteLine($"Update buffer size: {oldBuffer.Length} -> {m_Buffer.Length}");
 
             m_BufferStartInFile = m_File.Seek(bufferOffset);
 

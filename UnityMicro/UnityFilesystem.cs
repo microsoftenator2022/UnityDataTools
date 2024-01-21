@@ -49,7 +49,7 @@ public static class UnityFileSystem
         var r = DllWrapper.OpenSerializedFile(path, out var handle);
         UnityFileSystem.HandleErrors(r, path);
 
-        return new SerializedFile(handle);
+        return new SerializedFile(handle, path);
     }
 
     internal static void HandleErrors(ReturnCode returnCode, string filename = "")

@@ -25,6 +25,11 @@ let toValueOption<'a> (microOption : Functional.Option<'a>) : 'a voption =
         ValueSome microOption.Value
     else ValueNone
 
+let toMicroOption<'a> (valueOption : ValueOption<'a>) : Functional.Option<'a> =
+    match valueOption with
+    | ValueSome some -> Functional.Option.Some(some)
+    | ValueNone -> Functional.Option<'a>.None
+
 let tryGetObject (tto : ITypeTreeObject) : TypeTreeObject voption =
     tto.TryGetObject()
     |> toValueOption
@@ -101,7 +106,7 @@ let testGetStream() =
 
         let sis =
             sf.Objects
-            |> Seq.map (fun o -> TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id))
+            |> Seq.map (fun o -> TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id, sf))
             |> Seq.map (fun tto -> tto, getStreamingInfos tto)
             |> Seq.where (fun (_, sis) -> sis |> Seq.isEmpty |> not)
             |> Seq.cache
@@ -171,70 +176,70 @@ let dump outputDir =
         
         let sw = System.Diagnostics.Stopwatch.StartNew()
 
-        let trees =
-            sf.Objects
-            |> Seq.map (fun o -> sf.GetTypeTreeRoot o.Id)
-            |> Seq.distinctBy (fun t -> t.Handle)
-            |> Seq.groupBy (fun t -> t.Type)
-            |> Seq.collect (fun (t, tts) ->
-                if tts |> Seq.length = 1 then
-                    [t, tts |> Seq.head] |> Seq.ofList
-                else
-                    tts
-                    |> Seq.mapi (fun i tt -> $"{t}{i}", tt))
+        //let trees =
+        //    sf.Objects
+        //    |> Seq.map (fun o -> sf.GetTypeTreeRoot o.Id)
+        //    |> Seq.distinctBy (fun t -> t.Handle)
+        //    |> Seq.groupBy (fun t -> t.Type)
+        //    |> Seq.collect (fun (t, tts) ->
+        //        if tts |> Seq.length = 1 then
+        //            [t, tts |> Seq.head] |> Seq.ofList
+        //        else
+        //            tts
+        //            |> Seq.mapi (fun i tt -> $"{t}{i}", tt))
 
-        let typeTreesDumpPath = Path.Join(outputDir, "TypeTrees")
+        //let typeTreesDumpPath = Path.Join(outputDir, "TypeTrees")
 
-        if Directory.Exists typeTreesDumpPath |> not then
-            Directory.CreateDirectory typeTreesDumpPath |> ignore
+        //if Directory.Exists typeTreesDumpPath |> not then
+        //    Directory.CreateDirectory typeTreesDumpPath |> ignore
 
-        for (n, tree) in trees do
-            File.WriteAllLines(Path.Join(typeTreesDumpPath, $"{n}.txt"), dumpTypeTree tree)
+        //for (n, tree) in trees do
+        //    File.WriteAllLines(Path.Join(typeTreesDumpPath, $"{n}.txt"), dumpTypeTree tree)
 
-        sw.Stop()
+        //sw.Stop()
 
-        printfn "Dumped type trees in %ims" sw.ElapsedMilliseconds
+        //printfn "Dumped type trees in %ims" sw.ElapsedMilliseconds
 
-        sw.Restart()
+        //sw.Restart()
 
-        let mutable i = 0
+        //let mutable i = 0
 
-        for o in sf.Objects do
-            let tto = TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id)
-            match tto with
-            | :? TypeTreeObject as tto ->
-                let name =
-                    match tto.Value.TryGetValue("m_Name") with
-                    | true, (:? TypeTreeValue<string> as name) -> name.Value
-                    | _ -> ""
+        //for o in sf.Objects do
+        //    let tto = TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id)
+        //    match tto with
+        //    | :? TypeTreeObject as tto ->
+        //        let name =
+        //            match tto.Value.TryGetValue("m_Name") with
+        //            | true, (:? TypeTreeValue<string> as name) -> name.Value
+        //            | _ -> ""
 
-                let name =
-                    name
-                    |> Seq.map (fun c -> if invalidFileChars |> Array.contains c then '_' else c)
-                    |> Seq.toArray
-                    |> System.String
+        //        let name =
+        //            name
+        //            |> Seq.map (fun c -> if invalidFileChars |> Array.contains c then '_' else c)
+        //            |> Seq.toArray
+        //            |> System.String
 
-                let filename = Path.Join(outputDir, node.Path, $"{name}.{o.Id}.{tto.Node.Type}.txt")
+        //        let filename = Path.Join(outputDir, node.Path, $"{name}.{o.Id}.{tto.Node.Type}.txt")
 
-                if Directory.Exists(Path.GetDirectoryName(filename)) |> not then
-                    Directory.CreateDirectory(Path.GetDirectoryName(filename)) |> ignore
+        //        if Directory.Exists(Path.GetDirectoryName(filename)) |> not then
+        //            Directory.CreateDirectory(Path.GetDirectoryName(filename)) |> ignore
 
-                File.WriteAllText(filename, tto.ToString())
+        //        File.WriteAllText(filename, tto.ToString())
 
-            | _ -> ()
+        //    | _ -> ()
 
         
-            i <- i + 1
+        //    i <- i + 1
 
-        sw.Stop()
+        //sw.Stop()
 
-        printfn "Dumped %i objects in %ims" i sw.ElapsedMilliseconds
+        //printfn "Dumped %i objects in %ims" i sw.ElapsedMilliseconds
 
-        sw.Restart()
+        //sw.Restart()
 
         let pptrs =
             sf.Objects
-            |> Seq.map (fun o -> TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id))
+            |> Seq.map (fun o -> TypeTreeObject.Get(reader, MicroStack.Empty, o.Offset, sf.GetTypeTreeRoot o.Id, sf))
             |> Seq.collect getPPtrs
             |> Seq.distinct
             |> Seq.cache
@@ -245,10 +250,12 @@ let dump outputDir =
 
         let pptrs =
             pptrs
-            |> Seq.where (fun pptr -> pptr.FileID = 0 && pptr.PathID <> 0)
+            //|> Seq.where (fun pptr -> pptr.PathID <> 0)
             |> Seq.map (fun pptr -> 
                 let tto =
-                    pptr.TryGet(sf, reader)
+                    pptr.TryDereference(
+                        (fun sfp -> (if sfp = path then ValueSome sf else ValueNone) |> toMicroOption),
+                        (fun sf -> (if sf.Path = path then reader else null)))
                     |> toValueOption
                     |> ValueOption.bind (fun tto -> tto.TryGetObject() |> toValueOption)
 
@@ -279,6 +286,26 @@ let dump outputDir =
         ||> printfn "Dumped %i PPtrs in %ims" 
 
     printfn "Done"
+
+    UnityFileSystem.Cleanup()
+
+let extRefs() =
+    UnityFileSystem.Init()
+
+    use archive = UnityFileSystem.MountArchive(bundlePath, mountPoint)
+
+    for node in archive.Nodes |> Seq.where (fun n -> n.Flags.HasFlag(ArchiveNodeFlags.SerializedFile)) do
+        let nodePath = $"{mountPoint}{node.Path}"
+        node.Path |> printfn "%s"
+        printfn "External references:"
+
+        use sf = UnityFileSystem.OpenSerializedFile(nodePath)
+
+        for er in sf.ExternalReferences |> Seq.toArray do
+            let pathAsBytes = er.Path.ToCharArray() |> Array.map(fun c -> c |> byte)
+            printfn $"  Path: {er.Path}"
+            printfn $"    Guid: {er.Guid}"
+            printfn $"    Type: {er.Type}"
 
     UnityFileSystem.Cleanup()
 

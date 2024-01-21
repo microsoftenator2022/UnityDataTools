@@ -41,11 +41,15 @@ public class SerializedFile : IDisposable
         return m_Objects[idToIndex[pathID]];
     }
 
-    internal SerializedFile(SerializedFileHandle handle)
+    public readonly string Path;
+
+    internal SerializedFile(SerializedFileHandle handle, string path)
     {
         m_Handle = handle;
-        m_ExternalReferences = new List<ExternalReference>(GetExternalReferences());
+        m_ExternalReferences = GetExternalReferences();
         m_Objects = GetObjects();
+
+        Path = path;
     }
 
     public TypeTreeNode GetTypeTreeRoot(long objectId)
