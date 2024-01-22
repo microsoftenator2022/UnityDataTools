@@ -15,14 +15,35 @@ using UnityMicro.TypeTree;
 
 public readonly record struct StreamingInfo(ulong Offset, uint Size, string RawPath)
 {
-    public byte[] GetData()
+    public Option<byte[]> TryGetData(Func<string, Option<UnityFileReader>> getReader)
     {
-        var match = StreamingInfoParser.PathRegex().Match(RawPath);
-        var mountPoint = match.Groups["MountPoint"].Value;
-        var archive = match.Groups["ParentPath"].Value;
-        var path = match.Groups["ResourcePath"].Value;
+            var match = StreamingInfoParser.PathRegex().Match(RawPath);
+            var mountPoint = match.Groups["MountPoint"].Value;
+            var archive = match.Groups["ParentPath"].Value;
+            var file = match.Groups["ResourcePath"].Value;
+            var path = $"{mountPoint}/{file}";
 
-        return [];
+        //Console.WriteLine($"Get stream from file: {path}, offset = {this.Offset}, size = {this.Size}");
+
+        try
+        {
+            var reader = getReader(path).DefaultWith(() => throw new KeyNotFoundException());
+
+            var data = new byte[this.Size];
+
+            reader.ReadArray((long)this.Offset, (int)this.Size, data);
+
+            return Option.Some(data);
+        }
+        catch (Exception e)
+        {
+            if (e is KeyNotFoundException)
+                Console.WriteLine($"Could not get {path} reader for {this}");
+            else
+                Console.WriteLine(e.ToString());
+
+            return Option<byte[]>.None;
+        }
     }
 }
 
@@ -65,4 +86,3 @@ partial class StreamingInfoParser : IObjectParser
             new(offset.Value, size.Value, path.Value)));
     }
 }
-

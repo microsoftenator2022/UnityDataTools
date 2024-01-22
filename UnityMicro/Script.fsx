@@ -1,9 +1,12 @@
+open System.Diagnostics
+
+
 #r @"bin\Debug\net8.0\MicroUtils.dll"
 #r @"bin\Debug\net8.0\UnityMicro.dll"
 
 open System.IO
 
-open MicroUtils
+type MicroOption<'a> = MicroUtils.Functional.Option<'a>
 
 open UnityDataTools
 open UnityDataTools.FileSystem
@@ -20,15 +23,15 @@ let maxBufferSize = 32 * 1024 * 1024
 
 type TypeTreeObject = TypeTreeValue<System.Collections.Generic.Dictionary<string, ITypeTreeObject>>
 
-let toValueOption<'a> (microOption : Functional.Option<'a>) : 'a voption =
+let toValueOption<'a> (microOption : MicroOption<'a>) : 'a voption =
     if microOption.IsSome then
         ValueSome microOption.Value
     else ValueNone
 
-let toMicroOption<'a> (valueOption : ValueOption<'a>) : Functional.Option<'a> =
+let toMicroOption<'a> (valueOption : ValueOption<'a>) : MicroOption<'a> =
     match valueOption with
-    | ValueSome some -> Functional.Option.Some(some)
-    | ValueNone -> Functional.Option<'a>.None
+    | ValueSome some -> MicroOption.Some(some)
+    | ValueNone -> MicroOption<'a>.None
 
 let tryGetObject (tto : ITypeTreeObject) : TypeTreeObject voption =
     tto.TryGetObject()
@@ -58,12 +61,23 @@ let rec getPPtrs (tto : ITypeTreeObject) = seq {
     | _ -> ()
 }
 
-let getStreamingInfos (tto: ITypeTreeObject) =
-    tto.Find(fun c -> c.Node.Type = "StreamingInfo")
-    |> Seq.choose (function :? TypeTreeObject as o -> Some o | _ -> None)
-
 let invalidFileChars = Path.GetInvalidFileNameChars()
 
+
+let getName (tto : ITypeTreeObject) =
+    match tto with
+    | :? TypeTreeObject as tto ->
+        let name =
+            match tto.Value.TryGetValue("m_Name") with
+            | true, (:? TypeTreeValue<string> as name) -> name.Value
+            | _ -> ""
+
+        name
+        |> Seq.map (fun c -> if invalidFileChars |> Array.contains c then '_' else c)
+        |> Seq.toArray
+        |> System.String
+    | _ -> tto.Node.Name
+    
 let formatAsFileSize (size : int64) : string =
     if size > 10L * pown 2L 40 then
         size / (pown 2L 30)
@@ -95,7 +109,7 @@ let printArchiveFiles() =
 
 printArchiveFiles()
 
-let testGetStream() =
+let dumpStreamData dumpPath =
 
     UnityFileSystem.Init()
 
@@ -106,60 +120,98 @@ let testGetStream() =
         printfn "%s" path
 
         use sf = UnityFileSystem.OpenSerializedFile(path)
-        use reader = new UnityFileReader(path, bufferSize, maxBufferSize)
+        use sfReader = new UnityFileReader(path, bufferSize, maxBufferSize)
 
-        let sis =
-            sf.Objects
-            |> Seq.map (fun o -> TypeTreeObject.Get(sf, reader, o))
-            |> Seq.map (fun tto -> tto, getStreamingInfos tto)
-            |> Seq.where (fun (_, sis) -> sis |> Seq.isEmpty |> not)
-            |> Seq.cache
+        let sw = Stopwatch.StartNew()
+        let mutable i = 0
 
-        //sis
-        //|> Seq.iter (fun (tto, sis) ->
-        //    let name = 
-        //        tto.TryGetObject()
+        let mutable fileReader : (string * UnityFileReader) voption = ValueNone
+
+        let getReader rPath =
+            match fileReader with
+            | ValueSome (readerPath, fileReader) when readerPath = rPath ->
+                ValueSome fileReader
+            | maybeReader ->
+                match maybeReader with
+                | ValueSome (_, reader) ->
+                    reader.Dispose()
+                | _ -> ()
+
+                fileReader <- ValueSome (rPath, new UnityFileReader(rPath, bufferSize))
+                sfReader |> ValueSome
+        try
+            for objectInfo in sf.Objects do
+                let tto = TypeTreeObject.Get(sf, sfReader, objectInfo)
+
+                let sis =
+                    tto.Find(fun tto -> tto :? TypeTreeValue<StreamingInfo>)
+                    |> Seq.map (fun si -> (si :?> TypeTreeValue<StreamingInfo>).Value)
+                    |> Seq.cache
+                    |> Seq.mapi (fun i si ->
+                        let name = tto |> getName
+                        let filePath = Path.Join($"{name}.{objectInfo.Id}", $"{i}.{tto.Node.Type}")
+
+                        filePath, si)
+
+                for (filePath, si) in sis do
+                    match si.TryGetData(getReader >> toMicroOption) |> toValueOption with
+                    | ValueSome arr ->
+                        let filePath = Path.Join(dumpPath, "StreamData", filePath)
+                        let dirPath = Path.GetDirectoryName(filePath)
+
+                        if Directory.Exists(dirPath) |> not then
+                            Directory.CreateDirectory(dirPath) |> ignore
+
+                        printfn $"Dumping {si.Size} bytes to {filePath}"
+
+                        File.WriteAllBytes(filePath, arr)
+                        i <- i + 1
+                    | _ -> ()
+        finally
+            match fileReader with
+            | ValueSome (path, reader) ->
+                reader.Dispose()
+                fileReader <- ValueNone
+            | _ -> ()
+
+            sw.Stop()
+
+        printfn "Dumped stream data x %i in %ims" i sw.ElapsedMilliseconds
+
+        //try
+        //    for si in
+        //        sf.Objects
+        //        |> Seq.map (fun o -> TypeTreeObject.Get(sf, sfReader, o))
+        //        |> Seq.cache
+        //        |> Seq.collect (fun tto ->
+        //            tto.Find(fun tto -> tto :? TypeTreeValue<StreamingInfo>))
+        //        |> Seq.map (fun si -> (si :?> TypeTreeValue<StreamingInfo>).Value)
+        //        |> Seq.cache do
+            
+        //        si.TryGetData(fun requestedPath ->
+        //            match fileReader with
+        //            | ValueSome (readerPath, fileReader) when readerPath = requestedPath ->
+        //                ValueSome fileReader
+        //            | maybeReader ->
+        //                match maybeReader with
+        //                | ValueSome (_, reader) ->
+        //                    reader.Dispose()
+        //                | _ -> ()
+
+        //                fileReader <- ValueSome (requestedPath, new UnityFileReader(requestedPath, bufferSize, debug = true))
+        //                sfReader |> ValueSome
+        //            |> toMicroOption)
         //        |> toValueOption
-        //        |> ValueOption.bind (fun tto -> tto.TryGetField<string>("m_Name") |> toValueOption)
-        //        |> ValueOption.map (fun f -> f.Invoke())
-        //        |> ValueOption.defaultValue tto.Node.Name
-
-        //    (name, sis) |> printfn "%A")
-
-        let (tto, streamInfos) =
-            sis |> Seq.head
-
-        let name = 
-            tto
-            |> tryGetObject
-            |> ValueOption.bind (tryGetField "m_Name")
-            |> ValueOption.defaultValue tto.Node.Name
-
-        printfn "%s : %s (%s) StreamingInfo:" name tto.Node.Type (tto.Node.CSharpType.ToString())
-
-        let si =
-            streamInfos
-            |> Seq.head
-
-        let (resPath, offset, length) =
-            (si |> tryGetField<string> "path",
-            si |> tryGetField<uint64> "offset",
-            si |> tryGetField<uint32> "size")
-            |||> ValueOption.map3 (fun x y z -> x, y, z)
-            |> ValueOption.get
-
-        let resPath = resPath.Replace($"{path}/", "")
-        let resPath = $"{mountPoint}{resPath}"
-
-        printfn "Resource path: %s" resPath
-
-        use resReader = new UnityFileReader(resPath, length |> int32)
-
-        let arr = Array.zeroCreate<byte> (length |> int32)
-
-        resReader.ReadArray(offset |> int64, length |> int32, arr)
-
-        arr |> printfn "Bytes: %A"
+        //        |> function
+        //        | ValueSome arr ->
+        //            ()//let outDir = Path.Join(dumpPath, si.)
+        //        | ValueNone -> ()
+        //finally
+        //    match fileReader with
+        //    | ValueSome (path, reader) ->
+        //        reader.Dispose()
+        //        fileReader <- ValueNone
+        //    | _ -> ()
 
     UnityFileSystem.Cleanup()
 
@@ -175,7 +227,7 @@ let dump outputDir =
         use sf = UnityFileSystem.OpenSerializedFile(path)
         use reader = new UnityFileReader(path, bufferSize, maxBufferSize)
         
-        let sw = System.Diagnostics.Stopwatch.StartNew()
+        let sw = Stopwatch.StartNew()
 
         let trees =
             sf.Objects
@@ -256,7 +308,7 @@ let dump outputDir =
                 let tto =
                     pptr.TryDereference(
                         (fun sfp -> (if sfp = path then ValueSome sf else ValueNone) |> toMicroOption),
-                        (fun sf -> (if sf.Path = path then reader else null)))
+                        (fun readerPath -> (if readerPath = path then MicroOption.Some(reader) else MicroOption<UnityFileReader>.None)))
                     |> toValueOption
                     |> ValueOption.bind (fun tto -> tto.TryGetObject() |> toValueOption)
 
@@ -311,4 +363,5 @@ let extRefs() =
     UnityFileSystem.Cleanup()
 
 if fsi.CommandLineArgs.Length > 1 && fsi.CommandLineArgs[1] <> "" then
-    dump fsi.CommandLineArgs[1]
+    //dump fsi.CommandLineArgs[1]
+    dumpStreamData fsi.CommandLineArgs[1]

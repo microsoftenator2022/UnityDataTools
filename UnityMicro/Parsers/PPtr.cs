@@ -14,7 +14,7 @@ public readonly record struct PPtr(string TypeName, int FileID, long PathID, str
 {
     public static readonly PPtr NullPtr = new();
 
-    public Option<ITypeTreeObject> TryDereference(Func<string, Option<SerializedFile>> getSerializedFile, Func<SerializedFile, UnityFileReader> getReader)
+    public Option<ITypeTreeObject> TryDereference(Func<string, Option<SerializedFile>> getSerializedFile, Func<string, Option<UnityFileReader>> getReader)
     {
         if (this == NullPtr)
         {
@@ -42,11 +42,11 @@ public readonly record struct PPtr(string TypeName, int FileID, long PathID, str
                 referenceFile = getSerializedFile(path).DefaultWith(() => throw new KeyNotFoundException());
             }
 
-            var reader = getReader(referenceFile);
+            var reader = getReader(path);
 
-            return Option.Some(TypeTreeObject.Get(referenceFile, reader, referenceFile.GetObjectByID(this.PathID)));
+            var pathID = this.PathID;
 
-            throw new KeyNotFoundException();
+            return reader.Map(reader => TypeTreeObject.Get(referenceFile, reader, referenceFile.GetObjectByID(pathID)));
         }
         catch (Exception e) when (e is KeyNotFoundException or IndexOutOfRangeException)
         {
