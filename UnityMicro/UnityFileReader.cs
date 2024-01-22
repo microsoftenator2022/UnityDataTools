@@ -11,6 +11,8 @@ using System.Text;
 // This class can be used to read typed data from a UnityFile. Is uses a buffer for better performance.
 public class UnityFileReader : IDisposable
 {
+    readonly bool debug;
+
     UnityFile   m_File;
     byte[]      m_Buffer;
     long        m_BufferStartInFile;
@@ -21,8 +23,10 @@ public class UnityFileReader : IDisposable
     readonly int maxBufferSize;
     public long Length { get; }
 
-    public UnityFileReader(string path, int bufferSize, int maxBufferSize = 1024 * 1024 * 1024)
+    public UnityFileReader(string path, int bufferSize, int maxBufferSize = 1024 * 1024 * 1024, bool debug = false)
     {
+        this.debug = debug;
+
         bufferStartSize = bufferSize;
         this.maxBufferSize = maxBufferSize;
 
@@ -86,7 +90,7 @@ public class UnityFileReader : IDisposable
             
             bufferLength = Math.Min(bufferLength, maxBufferSize);
 
-            if (!IsSubRangeOf((bufferOffset, bufferLength), requestedRange))
+            if (!IsSubRangeOf((bufferOffset, m_Buffer.Length), requestedRange))
             {
                 (bufferOffset, bufferLength) = requestedRange;
                 bufferLength = Math.Max(bufferLength, bufferStartSize);
@@ -103,11 +107,14 @@ public class UnityFileReader : IDisposable
                 m_Buffer = arrayPool.Rent((int)bufferLength);
             }
 
-            //if (m_BufferStartInFile != bufferOffset)
-            //    Console.WriteLine($"Update buffer offset: {m_BufferStartInFile} -> {bufferOffset}");
+            if (debug)
+            {
+                if (m_BufferStartInFile != bufferOffset)
+                    Console.WriteLine($"Update buffer offset: {m_BufferStartInFile} -> {bufferOffset}");
 
-            //if (oldBuffer.Length != m_Buffer.Length)
-            //    Console.WriteLine($"Update buffer size: {oldBuffer.Length} -> {m_Buffer.Length}");
+                if (oldBuffer.Length != m_Buffer.Length)
+                    Console.WriteLine($"Update buffer size: {oldBuffer.Length} -> {m_Buffer.Length}");
+            }
 
             m_BufferStartInFile = m_File.Seek(bufferOffset);
 
